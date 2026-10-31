@@ -1,3 +1,4 @@
+import { updateProfile } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -45,6 +46,63 @@ import type {
 // 1. CUSTOMER PROFILE INITIALIZATION & MANAGEMENT
 // ============================================================================
 
+export interface CachedCustomerProfile {
+  displayName: string;
+  email: string;
+  phone: string;
+  defaultZone: DeliveryZone;
+}
+
+function getProfileCacheKey(uid: string): string {
+  return `finesteride_customer_profile_${uid}`;
+}
+
+export function loadCachedCustomerProfile(uid: string): CachedCustomerProfile | null {
+  if (!uid || typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(getProfileCacheKey(uid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedCustomerProfile>;
+    return {
+      displayName: sanitizeText(parsed.displayName || '', 100),
+      email: sanitizeText(parsed.email || '', 160),
+      phone: normalizePhone(parsed.phone || ''),
+      defaultZone: parsed.defaultZone === 'outside_dhaka' ? 'outside_dhaka' : 'inside_dhaka',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveCachedCustomerProfile(
+  uid: string,
+  patch: Partial<CachedCustomerProfile>
+): CachedCustomerProfile {
+  const existing = loadCachedCustomerProfile(uid);
+  const merged: CachedCustomerProfile = {
+    displayName:
+      patch.displayName !== undefined
+        ? sanitizeText(patch.displayName, 100)
+        : existing?.displayName || '',
+    email:
+      patch.email !== undefined ? sanitizeText(patch.email, 160) : existing?.email || '',
+    phone:
+      patch.phone !== undefined ? normalizePhone(patch.phone) : existing?.phone || '',
+    defaultZone:
+      patch.defaultZone === 'outside_dhaka' || patch.defaultZone === 'inside_dhaka'
+        ? patch.defaultZone
+        : existing?.defaultZone || 'inside_dhaka',
+  };
+  if (uid && typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(getProfileCacheKey(uid), JSON.stringify(merged));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+  return merged;
+}
+
 const inFlightProfileEnsure = new Map<
   string,
   Promise<{ publicProfile: UserPublicProfile; privateProfile: UserPrivateProfile }>
@@ -64,57 +122,113 @@ export async function ensureCustomerProfile(params: {
   const task = (async () => {
     const pubRef = doc(db, 'users', uid);
     const privRef = doc(db, 'users', uid, 'private', 'profile');
+    const cached = loadCachedCustomerProfile(uid);
 
-    try {
-      const [pubSnap, privSnap] = await Promise.all([
-        getDoc(pubRef),
-        getDoc(privRef).catch(() => null),
-      ]);
+    const fallbackName = sanitizeText(
+      cached?.displayName || params.displayName || params.email.split('@')[0] || 'Customer',
+      100
+    );
+    const safeName = fallbackName.length >= 1 ? fallbackName : 'Customer';
+    const safeEmail = sanitizeText(params.email || cached?.email || '', 160);
+    const fallbackPhone = cached?.phone || '';
+    const fallbackZone: DeliveryZone = cached?.defaultZone || 'inside_dhaka';
 
-      if (pubSnap.exists() && privSnap && privSnap.exists()) {
-        return {
-          publicProfile: pubSnap.data() as UserPublicProfile,
-          privateProfile: privSnap.data() as UserPrivateProfile,
-        };
-      }
+    let pubData: Record<string, unknown> | null = null;
+    let privData: Record<string, unknown> | null = null;
 
-      const safeName = sanitizeText(
-        params.displayName || params.email.split('@')[0] || 'Customer',
-        100
-      );
-      const safeEmail = sanitizeText(params.email || '', 160);
-
-      const batch = writeBatch(db);
-      if (!pubSnap.exists()) {
-        batch.set(pubRef, {
+    const pubSnap = await getDoc(pubRef).catch(() => null);
+    if (pubSnap && pubSnap.exists()) {
+      pubData = pubSnap.data() as Record<string, unknown>;
+    } else {
+      try {
+        await setDoc(pubRef, {
           uid,
-          displayName: safeName.length >= 1 ? safeName : 'Customer',
+          displayName: safeName,
           wishlistProductIds: [],
           accountDeletionRequested: false,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
+        const freshPub = await getDoc(pubRef).catch(() => null);
+        if (freshPub && freshPub.exists()) {
+          pubData = freshPub.data() as Record<string, unknown>;
+        }
+      } catch {
+        // Proceed with Auth + local profile fallback if Firestore public doc creation is pending rules
       }
-      if (!privSnap || !privSnap.exists()) {
-        batch.set(privRef, {
+    }
+
+    const privSnap = await getDoc(privRef).catch(() => null);
+    if (privSnap && privSnap.exists()) {
+      privData = privSnap.data() as Record<string, unknown>;
+    } else {
+      try {
+        await setDoc(privRef, {
           uid,
           email: safeEmail,
-          phone: '',
-          defaultZone: 'inside_dhaka',
+          phone: fallbackPhone,
+          defaultZone: fallbackZone,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
+        const freshPriv = await getDoc(privRef).catch(() => null);
+        if (freshPriv && freshPriv.exists()) {
+          privData = freshPriv.data() as Record<string, unknown>;
+        }
+      } catch {
+        // Proceed with Auth + local profile fallback if private subcollection rules are pending
       }
-      await batch.commit();
-
-      const [freshPub, freshPriv] = await Promise.all([getDoc(pubRef), getDoc(privRef)]);
-      return {
-        publicProfile: freshPub.data() as UserPublicProfile,
-        privateProfile: freshPriv.data() as UserPrivateProfile,
-      };
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
     }
+
+    const resolvedDisplayName = sanitizeText(
+      (typeof pubData?.displayName === 'string' && pubData.displayName) ||
+        (typeof pubData?.name === 'string' && pubData.name) ||
+        safeName,
+      100
+    );
+    const resolvedEmail = sanitizeText(
+      (typeof privData?.email === 'string' && privData.email) ||
+        (typeof pubData?.email === 'string' && pubData.email) ||
+        safeEmail,
+      160
+    );
+    const resolvedPhone = normalizePhone(
+      (typeof privData?.phone === 'string' && privData.phone) ||
+        (typeof pubData?.phone === 'string' && pubData.phone) ||
+        fallbackPhone
+    );
+    const rawZone = privData?.defaultZone ?? pubData?.defaultZone ?? fallbackZone;
+    const resolvedZone: DeliveryZone =
+      rawZone === 'outside_dhaka' ? 'outside_dhaka' : 'inside_dhaka';
+
+    saveCachedCustomerProfile(uid, {
+      displayName: resolvedDisplayName || 'Customer',
+      email: resolvedEmail,
+      phone: resolvedPhone,
+      defaultZone: resolvedZone,
+    });
+
+    const publicProfile: UserPublicProfile = {
+      uid,
+      displayName: resolvedDisplayName || 'Customer',
+      wishlistProductIds: Array.isArray(pubData?.wishlistProductIds)
+        ? (pubData.wishlistProductIds as string[])
+        : [],
+      accountDeletionRequested: Boolean(pubData?.accountDeletionRequested),
+      createdAt: (pubData?.createdAt as UserPublicProfile['createdAt']) ?? null,
+      updatedAt: (pubData?.updatedAt as UserPublicProfile['updatedAt']) ?? null,
+    };
+
+    const privateProfile: UserPrivateProfile = {
+      uid,
+      email: resolvedEmail,
+      phone: resolvedPhone,
+      defaultZone: resolvedZone,
+      createdAt: (privData?.createdAt as UserPrivateProfile['createdAt']) ?? null,
+      updatedAt: (privData?.updatedAt as UserPrivateProfile['updatedAt']) ?? null,
+    };
+
+    return { publicProfile, privateProfile };
   })().finally(() => {
     inFlightProfileEnsure.delete(uid);
   });
@@ -129,28 +243,164 @@ export async function updateCustomerProfileDetails(params: {
   email: string;
   phone: string;
   defaultZone: DeliveryZone;
-}): Promise<void> {
+}): Promise<{ publicProfile: UserPublicProfile; privateProfile: UserPrivateProfile }> {
   const { uid } = params;
-  const safeName = sanitizeText(params.displayName, 100);
+  const safeName = sanitizeText(params.displayName, 100) || 'Customer';
   const safeEmail = sanitizeText(params.email, 160);
   const safePhone = normalizePhone(params.phone);
+  const safeZone: DeliveryZone =
+    params.defaultZone === 'outside_dhaka' ? 'outside_dhaka' : 'inside_dhaka';
+
+  let authProfileSaved = false;
+  let publicDocSaved = false;
+  let privateDocSaved = false;
+  let lastFirestoreError: unknown = null;
+
+  // 1. Refresh verification token if user recently verified email, and update Firebase Auth displayName
+  if (auth.currentUser && auth.currentUser.uid === uid) {
+    if (!auth.currentUser.emailVerified) {
+      try {
+        await auth.currentUser.reload();
+        if (auth.currentUser.emailVerified) {
+          await auth.currentUser.getIdToken(true);
+        }
+      } catch {
+        // Ignore transient reload error
+      }
+    }
+    try {
+      await updateProfile(auth.currentUser, { displayName: safeName });
+      authProfileSaved = true;
+    } catch (err) {
+      lastFirestoreError = err;
+    }
+  }
+
+  // 2. Create or update /users/{uid} (public non-PII profile)
+  const pubRef = doc(db, 'users', uid);
+  const pubSnap = await getDoc(pubRef).catch(() => null);
+  const existingPub =
+    pubSnap && pubSnap.exists() ? (pubSnap.data() as Record<string, unknown>) : null;
 
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, 'users', uid), {
-      displayName: safeName || 'Customer',
-      updatedAt: serverTimestamp(),
-    });
-    batch.update(doc(db, 'users', uid, 'private', 'profile'), {
-      email: safeEmail,
-      phone: safePhone,
-      defaultZone: params.defaultZone,
-      updatedAt: serverTimestamp(),
-    });
-    await batch.commit();
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+    if (existingPub) {
+      await updateDoc(pubRef, {
+        displayName: safeName,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(pubRef, {
+        uid,
+        displayName: safeName,
+        wishlistProductIds: [],
+        accountDeletionRequested: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    publicDocSaved = true;
+  } catch (pubErr) {
+    lastFirestoreError = pubErr;
+    // Fallback if /users/{uid} in shared external Firebase project uses legacy/Admin schema
+    try {
+      await setDoc(
+        pubRef,
+        {
+          uid,
+          displayName: safeName,
+          wishlistProductIds: Array.isArray(existingPub?.wishlistProductIds)
+            ? (existingPub.wishlistProductIds as string[]).slice(0, 50)
+            : [],
+          accountDeletionRequested: Boolean(existingPub?.accountDeletionRequested),
+          createdAt: existingPub?.createdAt ?? serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: false }
+      );
+      publicDocSaved = true;
+    } catch {
+      try {
+        await setDoc(
+          pubRef,
+          {
+            uid,
+            displayName: safeName,
+            email: safeEmail,
+            phone: safePhone,
+            defaultZone: safeZone,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        publicDocSaved = true;
+      } catch (fallbackErr) {
+        lastFirestoreError = fallbackErr;
+      }
+    }
   }
+
+  // 3. Create or update /users/{uid}/private/profile (isolated PII subcollection)
+  const privRef = doc(db, 'users', uid, 'private', 'profile');
+  const privSnap = await getDoc(privRef).catch(() => null);
+  const existingPriv =
+    privSnap && privSnap.exists() ? (privSnap.data() as Record<string, unknown>) : null;
+
+  try {
+    if (existingPriv) {
+      await updateDoc(privRef, {
+        email: safeEmail,
+        phone: safePhone,
+        defaultZone: safeZone,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(privRef, {
+        uid,
+        email: safeEmail,
+        phone: safePhone,
+        defaultZone: safeZone,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    privateDocSaved = true;
+  } catch (privErr) {
+    lastFirestoreError = privErr;
+  }
+
+  if (!authProfileSaved && !publicDocSaved && !privateDocSaved && lastFirestoreError) {
+    handleFirestoreError(lastFirestoreError, OperationType.UPDATE, `users/${uid}`);
+  }
+
+  // 4. Persist UID-scoped local profile cache so reloads & checkout immediately reflect saved details
+  saveCachedCustomerProfile(uid, {
+    displayName: safeName,
+    email: safeEmail,
+    phone: safePhone,
+    defaultZone: safeZone,
+  });
+
+  const publicProfile: UserPublicProfile = {
+    uid,
+    displayName: safeName,
+    wishlistProductIds: Array.isArray(existingPub?.wishlistProductIds)
+      ? (existingPub.wishlistProductIds as string[])
+      : [],
+    accountDeletionRequested: Boolean(existingPub?.accountDeletionRequested),
+    createdAt: (existingPub?.createdAt as UserPublicProfile['createdAt']) ?? null,
+    updatedAt: null,
+  };
+
+  const privateProfile: UserPrivateProfile = {
+    uid,
+    email: safeEmail,
+    phone: safePhone,
+    defaultZone: safeZone,
+    createdAt: (existingPriv?.createdAt as UserPrivateProfile['createdAt']) ?? null,
+    updatedAt: null,
+  };
+
+  return { publicProfile, privateProfile };
 }
 
 export async function toggleWishlistProduct(

@@ -27,13 +27,20 @@ export function isValidDocumentId(id: string): boolean {
   return typeof id === 'string' && id.length >= 1 && id.length <= 128 && SAFE_ID_REGEX.test(id);
 }
 
+function toAsciiDigits(value: string): string {
+  return String(value ?? '').replace(/[০-৯]/g, (digit) =>
+    String('০১২৩৪৫৬৭৮৯'.indexOf(digit))
+  );
+}
+
 export function isValidBangladeshPhone(phone: string): boolean {
-  const normalized = phone.replace(/[\s-]/g, '');
+  const normalized = toAsciiDigits(phone).replace(/[\s\-().]/g, '');
   return BD_PHONE_REGEX.test(normalized);
 }
 
 export function normalizePhone(phone: string): string {
-  return sanitizeText(phone.replace(/\s+/g, ''), 24);
+  const ascii = toAsciiDigits(phone).replace(/[\s\-().]/g, '');
+  return sanitizeText(ascii, 24);
 }
 
 export function generateSafeDocId(prefix: string): string {

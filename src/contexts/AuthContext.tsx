@@ -18,9 +18,14 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../lib/firebase';
-import { sanitizeText } from '../lib/validation';
-import { ensureCustomerProfile } from '../services/pharmacyService';
-import type { UserPrivateProfile, UserPublicProfile } from '../types/pharmacy';
+import { normalizePhone, sanitizeText } from '../lib/validation';
+import {
+  ensureCustomerProfile,
+  loadCachedCustomerProfile,
+  saveCachedCustomerProfile,
+  updateCustomerProfileDetails,
+} from '../services/pharmacyService';
+import type { DeliveryZone, UserPrivateProfile, UserPublicProfile } from '../types/pharmacy';
 
 interface AuthContextValue {
   user: User | null;
@@ -36,6 +41,11 @@ interface AuthContextValue {
   applyEmailVerificationCode: (oobCode: string) => Promise<void>;
   resendVerification: () => Promise<void>;
   refreshVerificationState: () => Promise<boolean>;
+  saveProfileDetails: (params: {
+    displayName: string;
+    phone: string;
+    defaultZone: DeliveryZone;
+  }) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -124,42 +134,142 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const uid = firebaseUser.uid;
+      const cached = loadCachedCustomerProfile(uid);
+      const initialName =
+        cached?.displayName ||
+        firebaseUser.displayName ||
+        firebaseUser.email?.split('@')[0] ||
+        'Customer';
+      const initialEmail = firebaseUser.email || cached?.email || '';
+
+      // Hydrate immediately from Auth + UID-scoped cache so inputs never flash blank
+      setUserPublic((prev) => ({
+        uid,
+        displayName: prev?.uid === uid && prev.displayName ? prev.displayName : initialName,
+        wishlistProductIds: prev?.uid === uid ? prev.wishlistProductIds : [],
+        accountDeletionRequested:
+          prev?.uid === uid ? prev.accountDeletionRequested : false,
+        createdAt: prev?.uid === uid ? prev.createdAt : null,
+        updatedAt: prev?.uid === uid ? prev.updatedAt : null,
+      }));
+
+      setUserPrivate((prev) => ({
+        uid,
+        email: initialEmail,
+        phone: prev?.uid === uid && prev.phone ? prev.phone : cached?.phone || '',
+        defaultZone:
+          prev?.uid === uid && prev.defaultZone
+            ? prev.defaultZone
+            : cached?.defaultZone || 'inside_dhaka',
+        createdAt: prev?.uid === uid ? prev.createdAt : null,
+        updatedAt: prev?.uid === uid ? prev.updatedAt : null,
+      }));
+
+      // Always attach real-time listeners independently of ensureCustomerProfile
+      unsubPub = onSnapshot(
+        doc(db, 'users', uid),
+        (snap) => {
+          if (!snap.exists()) return;
+          const raw = snap.data() as Record<string, unknown>;
+          const resolvedName = sanitizeText(
+            (typeof raw.displayName === 'string' && raw.displayName) ||
+              (typeof raw.name === 'string' && raw.name) ||
+              firebaseUser.displayName ||
+              initialName,
+            100
+          );
+
+          setUserPublic({
+            uid,
+            displayName: resolvedName || 'Customer',
+            wishlistProductIds: Array.isArray(raw.wishlistProductIds)
+              ? (raw.wishlistProductIds as string[])
+              : [],
+            accountDeletionRequested: Boolean(raw.accountDeletionRequested),
+            createdAt: (raw.createdAt as UserPublicProfile['createdAt']) ?? null,
+            updatedAt: (raw.updatedAt as UserPublicProfile['updatedAt']) ?? null,
+          });
+
+          saveCachedCustomerProfile(uid, {
+            displayName: resolvedName || 'Customer',
+          });
+
+          // Support shared Admin Panel flat fields if present on /users/{uid}
+          if (typeof raw.phone === 'string' || typeof raw.defaultZone === 'string') {
+            const legacyPhone =
+              typeof raw.phone === 'string' ? normalizePhone(raw.phone) : undefined;
+            const legacyZone: DeliveryZone | undefined =
+              raw.defaultZone === 'outside_dhaka' || raw.defaultZone === 'inside_dhaka'
+                ? raw.defaultZone
+                : undefined;
+
+            setUserPrivate((prev) => {
+              const nextPhone = prev?.phone || legacyPhone || '';
+              const nextZone = prev?.defaultZone || legacyZone || 'inside_dhaka';
+              saveCachedCustomerProfile(uid, {
+                phone: nextPhone,
+                defaultZone: nextZone,
+              });
+              return {
+                uid,
+                email: prev?.email || initialEmail,
+                phone: nextPhone,
+                defaultZone: nextZone,
+                createdAt: prev?.createdAt ?? null,
+                updatedAt: prev?.updatedAt ?? null,
+              };
+            });
+          }
+        },
+        () => {
+          // Firestore rules may still be pending publication in external project
+        }
+      );
+
+      unsubPriv = onSnapshot(
+        doc(db, 'users', uid, 'private', 'profile'),
+        (snap) => {
+          if (!snap.exists()) return;
+          const priv = snap.data() as UserPrivateProfile;
+          const cleanPriv: UserPrivateProfile = {
+            uid,
+            email: priv.email || initialEmail,
+            phone: normalizePhone(priv.phone || ''),
+            defaultZone:
+              priv.defaultZone === 'outside_dhaka' ? 'outside_dhaka' : 'inside_dhaka',
+            createdAt: priv.createdAt ?? null,
+            updatedAt: priv.updatedAt ?? null,
+          };
+          setUserPrivate(cleanPriv);
+          saveCachedCustomerProfile(uid, {
+            email: cleanPriv.email,
+            phone: cleanPriv.phone,
+            defaultZone: cleanPriv.defaultZone,
+          });
+        },
+        () => {
+          // Firestore rules may still be pending publication in external project
+        }
+      );
+
+      setIsAuthReady(true);
+
       try {
-        await ensureCustomerProfile({
-          uid: firebaseUser.uid,
-          displayName:
-            firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Customer',
-          email: firebaseUser.email || '',
+        const ensured = await ensureCustomerProfile({
+          uid,
+          displayName: initialName,
+          email: initialEmail,
         });
-
-        unsubPub = onSnapshot(
-          doc(db, 'users', firebaseUser.uid),
-          (snap) => {
-            if (snap.exists()) {
-              setUserPublic(snap.data() as UserPublicProfile);
-            }
-          },
-          () => {
-            // Firestore rules may still be pending publication in external project
-          }
+        setUserPublic((prev) =>
+          prev && prev.uid === uid && prev.createdAt ? prev : ensured.publicProfile
         );
-
-        unsubPriv = onSnapshot(
-          doc(db, 'users', firebaseUser.uid, 'private', 'profile'),
-          (snap) => {
-            if (snap.exists()) {
-              setUserPrivate(snap.data() as UserPrivateProfile);
-            }
-          },
-          () => {
-            // Firestore rules may still be pending publication in external project
-          }
+        setUserPrivate((prev) =>
+          prev && prev.uid === uid && prev.createdAt ? prev : ensured.privateProfile
         );
       } catch {
         // Allow authentication session to succeed even if Firestore rules are not yet published
       }
-
-      setIsAuthReady(true);
     });
 
     return () => {
@@ -186,11 +296,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setEmailVerified(isVerified);
 
     try {
-      await ensureCustomerProfile({
+      const ensured = await ensureCustomerProfile({
         uid: activeUser.uid,
         displayName: activeUser.displayName || activeUser.email?.split('@')[0] || 'Customer',
         email: activeUser.email || email.trim(),
       });
+      setUserPublic(ensured.publicProfile);
+      setUserPrivate(ensured.privateProfile);
     } catch {
       // Profile document will initialize once Firestore rules are published
     }
@@ -200,7 +312,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const registerWithEmail = async (name: string, email: string, password: string) => {
     const cleanName = sanitizeText(name, 100);
-    const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    const cleanEmail = email.trim();
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+    const resolvedName = cleanName || cred.user.email?.split('@')[0] || 'Customer';
+
+    saveCachedCustomerProfile(cred.user.uid, {
+      displayName: resolvedName,
+      email: cred.user.email || cleanEmail,
+    });
+
     if (cleanName) {
       await updateProfile(cred.user, { displayName: cleanName });
     }
@@ -211,11 +331,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setEmailVerified(Boolean(cred.user.emailVerified));
 
     try {
-      await ensureCustomerProfile({
+      const updated = await updateCustomerProfileDetails({
         uid: cred.user.uid,
-        displayName: cleanName || cred.user.email?.split('@')[0] || 'Customer',
-        email: cred.user.email || email.trim(),
+        displayName: resolvedName,
+        email: cred.user.email || cleanEmail,
+        phone: '',
+        defaultZone: 'inside_dhaka',
       });
+      setUserPublic(updated.publicProfile);
+      setUserPrivate(updated.privateProfile);
     } catch {
       // Profile document will initialize once Firestore rules are published
     }
@@ -273,17 +397,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setEmailVerified(verified);
 
     try {
-      await ensureCustomerProfile({
+      const ensured = await ensureCustomerProfile({
         uid: auth.currentUser.uid,
         displayName:
           auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Customer',
         email: auth.currentUser.email || '',
       });
+      setUserPublic(ensured.publicProfile);
+      setUserPrivate(ensured.privateProfile);
     } catch {
       // Profile document will initialize once Firestore rules are published
     }
 
     return verified;
+  };
+
+  const saveProfileDetails = async (params: {
+    displayName: string;
+    phone: string;
+    defaultZone: DeliveryZone;
+  }) => {
+    const activeUser = auth.currentUser || user;
+    if (!activeUser) {
+      throw new Error('প্রোফাইল সংরক্ষণের জন্য প্রথমে লগইন করুন।');
+    }
+
+    const updated = await updateCustomerProfileDetails({
+      uid: activeUser.uid,
+      displayName: params.displayName,
+      email: activeUser.email || '',
+      phone: params.phone,
+      defaultZone: params.defaultZone,
+    });
+
+    setUser(auth.currentUser || activeUser);
+    setEmailVerified(Boolean((auth.currentUser || activeUser).emailVerified));
+    setUserPublic((prev) => ({
+      ...updated.publicProfile,
+      wishlistProductIds:
+        prev?.wishlistProductIds ?? updated.publicProfile.wishlistProductIds,
+      accountDeletionRequested:
+        prev?.accountDeletionRequested ?? updated.publicProfile.accountDeletionRequested,
+    }));
+    setUserPrivate(updated.privateProfile);
   };
 
   const changePassword = async (currentPassword: string, newPassword: string) => {
@@ -315,6 +471,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         applyEmailVerificationCode,
         resendVerification,
         refreshVerificationState,
+        saveProfileDetails,
         changePassword,
         logout,
       }}

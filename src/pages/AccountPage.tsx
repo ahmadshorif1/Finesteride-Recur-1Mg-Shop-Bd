@@ -39,7 +39,6 @@ import {
   markNotificationAsRead,
   requestCustomerAccountDeletion,
   saveDeliveryAddress,
-  updateCustomerProfileDetails,
   updatePrescriptionAdditionalInfo,
 } from '../services/pharmacyService';
 import type {
@@ -210,6 +209,7 @@ export function AccountPage() {
     emailVerified,
     resendVerification,
     refreshVerificationState,
+    saveProfileDetails,
     changePassword,
     logout,
   } = useAuth();
@@ -254,15 +254,26 @@ export function AccountPage() {
 
   const [rxFollowUpNotes, setRxFollowUpNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
   const [verifyingBusy, setVerifyingBusy] = useState(false);
 
   useEffect(() => {
-    if (userPublic) setDisplayName(userPublic.displayName);
-    if (userPrivate) {
-      setPhone(userPrivate.phone);
-      setDefaultZone(userPrivate.defaultZone);
+    const resolvedName = userPublic?.displayName || user?.displayName || '';
+    if (resolvedName) {
+      setDisplayName(resolvedName);
     }
-  }, [userPublic, userPrivate]);
+  }, [userPublic?.displayName, user?.displayName]);
+
+  useEffect(() => {
+    if (userPrivate) {
+      setPhone(userPrivate.phone || '');
+      setDefaultZone(userPrivate.defaultZone || 'inside_dhaka');
+    }
+  }, [userPrivate?.phone, userPrivate?.defaultZone]);
 
   // Isolated per-customer Firestore subscriptions
   useEffect(() => {
@@ -607,25 +618,51 @@ export function AccountPage() {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (phone && !isValidBangladeshPhone(phone)) {
-                    setFeedback(
-                      t(
-                        'সঠিক বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।',
-                        'Please enter a valid 11-digit Bangladesh mobile number (e.g., 017XXXXXXXX).'
-                      )
+                  setProfileStatus(null);
+                  setFeedback(null);
+
+                  const trimmedName = displayName.trim();
+                  if (!trimmedName) {
+                    const errText = t(
+                      'অনুগ্রহ করে আপনার পূর্ণ নাম লিখুন।',
+                      'Please enter your full name.'
                     );
+                    setProfileStatus({ type: 'error', message: errText });
                     return;
                   }
-                  await updateCustomerProfileDetails({
-                    uid: user.uid,
-                    displayName,
-                    email: user.email || '',
-                    phone,
-                    defaultZone,
-                  });
-                  setFeedback(
-                    t('প্রোফাইল সফলভাবে সংরক্ষিত হয়েছে।', 'Profile updated successfully.')
-                  );
+
+                  const trimmedPhone = phone.trim();
+                  if (trimmedPhone && !isValidBangladeshPhone(trimmedPhone)) {
+                    const errText = t(
+                      'সঠিক ১১ সংখ্যার বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।',
+                      'Please enter a valid 11-digit Bangladesh mobile number (e.g., 017XXXXXXXX).'
+                    );
+                    setProfileStatus({ type: 'error', message: errText });
+                    return;
+                  }
+
+                  setSavingProfile(true);
+                  try {
+                    await saveProfileDetails({
+                      displayName: trimmedName,
+                      phone: trimmedPhone,
+                      defaultZone,
+                    });
+                    const okText = t(
+                      'প্রোফাইল সফলভাবে সংরক্ষিত হয়েছে।',
+                      'Profile updated successfully.'
+                    );
+                    setProfileStatus({ type: 'success', message: okText });
+                    setFeedback(okText);
+                  } catch {
+                    const failText = t(
+                      'প্রোফাইল সংরক্ষণে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।',
+                      'Could not save profile changes. Please try again.'
+                    );
+                    setProfileStatus({ type: 'error', message: failText });
+                  } finally {
+                    setSavingProfile(false);
+                  }
                 }}
                 className="space-y-4 max-w-lg"
               >
@@ -640,7 +677,10 @@ export function AccountPage() {
                     type="text"
                     required
                     value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
+                    onChange={(e) => {
+                      setDisplayName(e.target.value);
+                      if (profileStatus) setProfileStatus(null);
+                    }}
                     className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
                   />
                 </div>
@@ -662,7 +702,10 @@ export function AccountPage() {
                   <input
                     type="tel"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      if (profileStatus) setProfileStatus(null);
+                    }}
                     placeholder="017XXXXXXXX"
                     className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
                   />
@@ -673,19 +716,47 @@ export function AccountPage() {
                   </label>
                   <select
                     value={defaultZone}
-                    onChange={(e) => setDefaultZone(e.target.value as DeliveryZone)}
+                    onChange={(e) => {
+                      setDefaultZone(e.target.value as DeliveryZone);
+                      if (profileStatus) setProfileStatus(null);
+                    }}
                     className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
                   >
                     <option value="inside_dhaka">{t('ঢাকার ভেতরে', 'Inside Dhaka')}</option>
                     <option value="outside_dhaka">{t('ঢাকার বাইরে', 'Outside Dhaka')}</option>
                   </select>
                 </div>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  {t('পরিবর্তন সংরক্ষণ করুন', 'Save Changes')}
-                </button>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={savingProfile}
+                    className="px-6 py-2.5 bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold rounded-lg whitespace-nowrap shrink-0 disabled:opacity-60 inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    {savingProfile && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>
+                      {savingProfile
+                        ? t('সংরক্ষণ হচ্ছে...', 'Saving...')
+                        : t('পরিবর্তন সংরক্ষণ করুন', 'Save Changes')}
+                    </span>
+                  </button>
+
+                  {profileStatus && (
+                    <span
+                      role="status"
+                      className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                        profileStatus.type === 'success' ? 'text-[#146c43]' : 'text-red-600'
+                      }`}
+                    >
+                      {profileStatus.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      ) : (
+                        <XCircle className="w-4 h-4 shrink-0" />
+                      )}
+                      <span>{profileStatus.message}</span>
+                    </span>
+                  )}
+                </div>
               </form>
 
               {/* Dedicated Past Order History Section on Account Overview */}
