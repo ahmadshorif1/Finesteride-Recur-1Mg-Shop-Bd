@@ -1,28 +1,40 @@
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
   Bell,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  ExternalLink,
   FileText,
   Heart,
   HelpCircle,
   Lock,
+  MailWarning,
   MapPin,
   Package,
+  RefreshCw,
+  Search,
+  Send,
   Trash2,
   User as UserIcon,
+  XCircle,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { ProductCard } from '../components/ProductCard';
+import { ResilientImage } from '../components/ResilientImage';
 import { SEOHead } from '../components/SEOHead';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useStore } from '../contexts/StoreContext';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { formatTaka, isValidBangladeshPhone } from '../lib/validation';
 import {
   closeCustomerSupportTicket,
   createSupportTicket,
   deleteDeliveryAddress,
+  fetchOrderWithItems,
   getPrivatePrescriptionDownloadUrl,
   markNotificationAsRead,
   requestCustomerAccountDeletion,
@@ -35,6 +47,8 @@ import type {
   DeliveryZone,
   NotificationItem,
   Order,
+  OrderItem,
+  OrderStatus,
   PrescriptionReview,
   SupportTicket,
 } from '../types/pharmacy';
@@ -49,17 +63,158 @@ type AccountTab =
   | 'support'
   | 'security';
 
+type OrderHistoryFilter = 'all' | 'active' | 'delivered' | 'cancelled';
+
+function getOrderTimestampMillis(createdAt: unknown): number {
+  if (!createdAt) return 0;
+  if (typeof createdAt === 'object') {
+    const maybeTs = createdAt as {
+      toMillis?: () => number;
+      toDate?: () => Date;
+      seconds?: number;
+    };
+    if (typeof maybeTs.toMillis === 'function') {
+      return maybeTs.toMillis();
+    }
+    if (typeof maybeTs.toDate === 'function') {
+      return maybeTs.toDate().getTime();
+    }
+    if (typeof maybeTs.seconds === 'number') {
+      return maybeTs.seconds * 1000;
+    }
+  }
+  if (typeof createdAt === 'string' || typeof createdAt === 'number') {
+    const parsed = new Date(createdAt).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+function formatOrderDate(createdAt: unknown, lang: 'bn' | 'en'): string {
+  const millis = getOrderTimestampMillis(createdAt);
+  if (!millis) {
+    return lang === 'en' ? 'Just now' : 'এইমাত্র';
+  }
+  const date = new Date(millis);
+  try {
+    return new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'bn-BD', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }).format(date);
+  } catch {
+    return date.toLocaleDateString();
+  }
+}
+
+function getOrderStatusMeta(
+  status: OrderStatus,
+  t: (bn: string, en: string) => string
+): {
+  label: string;
+  colorClass: string;
+  bucket: Exclude<OrderHistoryFilter, 'all'>;
+} {
+  switch (status) {
+    case 'Delivered':
+      return {
+        label: t('ডেলিভারি সম্পন্ন', 'Delivered'),
+        colorClass: 'text-[#146c43]',
+        bucket: 'delivered',
+      };
+    case 'Cancelled':
+      return {
+        label: t('বাতিলকৃত', 'Cancelled'),
+        colorClass: 'text-red-600',
+        bucket: 'cancelled',
+      };
+    case 'Refund Pending':
+      return {
+        label: t('রিফান্ড প্রক্রিয়াধীন', 'Refund Pending'),
+        colorClass: 'text-amber-700',
+        bucket: 'cancelled',
+      };
+    case 'Refunded':
+      return {
+        label: t('রিফান্ড সম্পন্ন', 'Refunded'),
+        colorClass: 'text-slate-600',
+        bucket: 'cancelled',
+      };
+    case 'Awaiting Review':
+      return {
+        label: t('প্রেসক্রিপশন যাচাই চলছে', 'Awaiting Rx Review'),
+        colorClass: 'text-amber-700',
+        bucket: 'active',
+      };
+    case 'Pending':
+      return {
+        label: t('অপেক্ষমাণ', 'Pending'),
+        colorClass: 'text-amber-700',
+        bucket: 'active',
+      };
+    case 'Confirmed':
+      return {
+        label: t('নিশ্চিতকৃত', 'Confirmed'),
+        colorClass: 'text-sky-700',
+        bucket: 'active',
+      };
+    case 'Processing':
+      return {
+        label: t('প্রস্তুত হচ্ছে', 'Processing'),
+        colorClass: 'text-sky-700',
+        bucket: 'active',
+      };
+    case 'Ready for Dispatch':
+      return {
+        label: t('ডিসপ্যাচ প্রস্তুত', 'Ready for Dispatch'),
+        colorClass: 'text-teal-700',
+        bucket: 'active',
+      };
+    case 'Shipped':
+      return {
+        label: t('পথে রয়েছে', 'Shipped'),
+        colorClass: 'text-indigo-700',
+        bucket: 'active',
+      };
+    default:
+      return {
+        label: status,
+        colorClass: 'text-slate-700',
+        bucket: 'active',
+      };
+  }
+}
+
+function formatPaymentStatusLabel(
+  paymentStatus: Order['paymentStatus'],
+  t: (bn: string, en: string) => string
+): string {
+  switch (paymentStatus) {
+    case 'paid':
+      return t('পরিশোধিত', 'Paid');
+    case 'pending_verification':
+      return t('যাচাই চলছে', 'Pending Verification');
+    case 'refunded':
+      return t('রিফান্ডকৃত', 'Refunded');
+    default:
+      return t('অপরিশোধিত', 'Unpaid');
+  }
+}
+
 export function AccountPage() {
   const {
     user,
     userPublic,
     userPrivate,
     isAuthReady,
+    emailVerified,
+    resendVerification,
+    refreshVerificationState,
     changePassword,
     logout,
   } = useAuth();
   const { catalogProducts, siteSettings } = useStore();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = (searchParams.get('tab') as AccountTab) || 'profile';
@@ -70,6 +225,12 @@ export function AccountPage() {
 
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [orderFilter, setOrderFilter] = useState<OrderHistoryFilter>('all');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [expandedItemsMap, setExpandedItemsMap] = useState<Record<string, OrderItem[]>>({});
+  const [loadingItemsOrderId, setLoadingItemsOrderId] = useState<string | null>(null);
   const [prescriptions, setPrescriptions] = useState<PrescriptionReview[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -93,6 +254,7 @@ export function AccountPage() {
 
   const [rxFollowUpNotes, setRxFollowUpNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [verifyingBusy, setVerifyingBusy] = useState(false);
 
   useEffect(() => {
     if (userPublic) setDisplayName(userPublic.displayName);
@@ -104,8 +266,13 @@ export function AccountPage() {
 
   // Isolated per-customer Firestore subscriptions
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isAuthReady) {
+      setOrders([]);
+      setOrdersLoading(false);
+      return;
+    }
     const uid = user.uid;
+    setOrdersLoading(true);
 
     const uAddr = onSnapshot(
       collection(db, 'users', uid, 'addresses'),
@@ -118,13 +285,20 @@ export function AccountPage() {
 
     const uOrd = onSnapshot(
       query(collection(db, 'orders'), where('userId', '==', uid)),
-      (s) =>
+      (s) => {
         setOrders(
           s.docs
             .map((d) => ({ id: d.id, ...(d.data() as Omit<Order, 'id'>) }))
-            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-        ),
-      () => {}
+            .sort(
+              (a, b) => getOrderTimestampMillis(b.createdAt) - getOrderTimestampMillis(a.createdAt)
+            )
+        );
+        setOrdersLoading(false);
+      },
+      (err) => {
+        setOrdersLoading(false);
+        handleFirestoreError(err, OperationType.LIST, 'orders');
+      }
     );
 
     const uRx = onSnapshot(
@@ -165,7 +339,7 @@ export function AccountPage() {
       uNotif();
       uTkt();
     };
-  }, [user]);
+  }, [user, isAuthReady]);
 
   if (!isAuthReady) {
     return (
@@ -182,6 +356,55 @@ export function AccountPage() {
   const wishlistedProducts = catalogProducts.filter((p) =>
     userPublic?.wishlistProductIds?.includes(p.id)
   );
+
+  const deliveredOrdersCount = orders.filter((o) => o.status === 'Delivered').length;
+  const activeOrdersCount = orders.filter(
+    (o) => getOrderStatusMeta(o.status, t).bucket === 'active'
+  ).length;
+
+  const filteredOrders = orders.filter((ord) => {
+    const meta = getOrderStatusMeta(ord.status, t);
+    if (orderFilter !== 'all' && meta.bucket !== orderFilter) {
+      return false;
+    }
+    const q = orderSearch.trim().toUpperCase();
+    if (!q) return true;
+    return (
+      ord.orderNumber.toUpperCase().includes(q) ||
+      ord.id.toUpperCase().includes(q) ||
+      ord.status.toUpperCase().includes(q)
+    );
+  });
+
+  const handleToggleOrderItems = async (orderId: string) => {
+    if (expandedOrderId === orderId) {
+      setExpandedOrderId(null);
+      return;
+    }
+    setExpandedOrderId(orderId);
+    if (expandedItemsMap[orderId]) {
+      return;
+    }
+    setLoadingItemsOrderId(orderId);
+    try {
+      const res = await fetchOrderWithItems(orderId, user.uid);
+      if (res) {
+        setExpandedItemsMap((prev) => ({ ...prev, [orderId]: res.items }));
+      }
+    } finally {
+      setLoadingItemsOrderId((curr) => (curr === orderId ? null : curr));
+    }
+  };
+
+  const renderStatusIcon = (status: OrderStatus) => {
+    if (status === 'Delivered') {
+      return <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />;
+    }
+    if (status === 'Cancelled' || status === 'Refund Pending' || status === 'Refunded') {
+      return <XCircle className="w-3.5 h-3.5 shrink-0" />;
+    }
+    return <Clock className="w-3.5 h-3.5 shrink-0" />;
+  };
 
   const navItems: Array<{ key: AccountTab; label: string; icon: React.ReactNode }> = [
     {
@@ -242,7 +465,20 @@ export function AccountPage() {
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">
             {t('কাস্টমার একাউন্ট ড্যাশবোর্ড', 'Customer Account Dashboard')}
           </h1>
-          <p className="text-xs text-slate-500">{user.email}</p>
+          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+            <p className="text-xs text-slate-500">{user.email}</p>
+            {emailVerified ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-[#0f5435]">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>{t('ইমেইল ভেরিফাইড', 'Verified')}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-800">
+                <MailWarning className="w-3 h-3" />
+                <span>{t('ভেরিফিকেশন বাকি', 'Unverified')}</span>
+              </span>
+            )}
+          </div>
         </div>
         <button
           type="button"
@@ -252,6 +488,87 @@ export function AccountPage() {
           {t('লগআউট', 'Logout')}
         </button>
       </div>
+
+      {!emailVerified && (
+        <div className="mb-5 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-xs text-amber-950 space-y-0.5">
+            <p className="font-bold">
+              {t('আপনার ইমেইল ঠিকানা ভেরিফাই করুন', 'Please Verify Your Email Address')}
+            </p>
+            <p className="text-amber-800">
+              {t(
+                'আপনার ইমেইলে পাঠানো ভেরিফিকেশন লিংকে ক্লিক করে নিচের যাচাই বাটনে ক্লিক করুন (Spam ফোল্ডারও চেক করুন)।',
+                'Click the verification link sent to your email (check Spam folder too) and tap Verify Status.'
+              )}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={verifyingBusy}
+              onClick={async () => {
+                setVerifyingBusy(true);
+                try {
+                  const ok = await refreshVerificationState();
+                  setFeedback(
+                    ok
+                      ? t(
+                          'আপনার ইমেইল সফলভাবে ভেরিফাই হয়েছে!',
+                          'Your email has been verified successfully!'
+                        )
+                      : t(
+                          'এখনো ভেরিফাই সম্পন্ন হয়নি। ইমেইলের লিংকে ক্লিক করে আবার চেষ্টা করুন।',
+                          'Not verified yet. Please click the link in your email first.'
+                        )
+                  );
+                } catch {
+                  setFeedback(
+                    t(
+                      'ভেরিফিকেশন স্ট্যাটাস যাচাই করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।',
+                      'Could not check verification status. Please try again.'
+                    )
+                  );
+                } finally {
+                  setVerifyingBusy(false);
+                }
+              }}
+              className="px-3.5 py-2 rounded-lg bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${verifyingBusy ? 'animate-spin' : ''}`} />
+              <span>{t('ভেরিফিকেশন যাচাই করুন', 'Verify Status')}</span>
+            </button>
+            <button
+              type="button"
+              disabled={verifyingBusy}
+              onClick={async () => {
+                setVerifyingBusy(true);
+                try {
+                  await resendVerification();
+                  setFeedback(
+                    t(
+                      'নতুন ভেরিফিকেশন লিংক আপনার ইমেইলে পাঠানো হয়েছে।',
+                      'A new verification email has been sent.'
+                    )
+                  );
+                } catch {
+                  setFeedback(
+                    t(
+                      'ভেরিফিকেশন ইমেইল ইতিমধ্যে পাঠানো হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।',
+                      'Verification email was recently sent. Please wait a moment and try again.'
+                    )
+                  );
+                } finally {
+                  setVerifyingBusy(false);
+                }
+              }}
+              className="px-3.5 py-2 rounded-lg bg-white border border-amber-300 hover:bg-amber-100/50 text-amber-950 text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{t('লিংক পুনরায় পাঠান', 'Resend Link')}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {feedback && (
         <div className="mb-5 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-950">
@@ -284,134 +601,468 @@ export function AccountPage() {
 
         {/* Main Content Panel */}
         <div className="lg:col-span-9 bg-white border border-slate-200 rounded-2xl p-6">
-          {/* TAB 1: PROFILE */}
+          {/* TAB 1: PROFILE + PAST ORDER HISTORY SECTION */}
           {activeTab === 'profile' && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (phone && !isValidBangladeshPhone(phone)) {
+            <div className="space-y-10">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (phone && !isValidBangladeshPhone(phone)) {
+                    setFeedback(
+                      t(
+                        'সঠিক বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।',
+                        'Please enter a valid 11-digit Bangladesh mobile number (e.g., 017XXXXXXXX).'
+                      )
+                    );
+                    return;
+                  }
+                  await updateCustomerProfileDetails({
+                    uid: user.uid,
+                    displayName,
+                    email: user.email || '',
+                    phone,
+                    defaultZone,
+                  });
                   setFeedback(
-                    t(
-                      'সঠিক বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।',
-                      'Please enter a valid 11-digit Bangladesh mobile number (e.g., 017XXXXXXXX).'
-                    )
+                    t('প্রোফাইল সফলভাবে সংরক্ষিত হয়েছে।', 'Profile updated successfully.')
                   );
-                  return;
-                }
-                await updateCustomerProfileDetails({
-                  uid: user.uid,
-                  displayName,
-                  email: user.email || '',
-                  phone,
-                  defaultZone,
-                });
-                setFeedback(
-                  t('প্রোফাইল সফলভাবে সংরক্ষিত হয়েছে।', 'Profile updated successfully.')
-                );
-              }}
-              className="space-y-4 max-w-lg"
-            >
-              <h2 className="text-base font-bold text-slate-900">
-                {t('প্রোফাইল ও যোগাযোগের তথ্য', 'Profile & Contact Details')}
-              </h2>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t('পূর্ণ নাম', 'Full Name')}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t('ইমেইল', 'Email Address')}
-                </label>
-                <input
-                  type="email"
-                  disabled
-                  value={user.email || ''}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 rounded-lg text-sm text-slate-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t('মোবাইল নম্বর', 'Mobile Number')}
-                </label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="017XXXXXXXX"
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t('ডিফল্ট ডেলিভারি জোন', 'Default Delivery Zone')}
-                </label>
-                <select
-                  value={defaultZone}
-                  onChange={(e) => setDefaultZone(e.target.value as DeliveryZone)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
-                >
-                  <option value="inside_dhaka">{t('ঢাকার ভেতরে', 'Inside Dhaka')}</option>
-                  <option value="outside_dhaka">{t('ঢাকার বাইরে', 'Outside Dhaka')}</option>
-                </select>
-              </div>
-              <button
-                type="submit"
-                className="px-6 py-2.5 bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold rounded-lg cursor-pointer"
+                }}
+                className="space-y-4 max-w-lg"
               >
-                {t('পরিবর্তন সংরক্ষণ করুন', 'Save Changes')}
-              </button>
-            </form>
+                <h2 className="text-base font-bold text-slate-900">
+                  {t('প্রোফাইল ও যোগাযোগের তথ্য', 'Profile & Contact Details')}
+                </h2>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {t('পূর্ণ নাম', 'Full Name')}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {t('ইমেইল', 'Email Address')}
+                  </label>
+                  <input
+                    type="email"
+                    disabled
+                    value={user.email || ''}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 rounded-lg text-sm text-slate-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {t('মোবাইল নম্বর', 'Mobile Number')}
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="017XXXXXXXX"
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {t('ডিফল্ট ডেলিভারি জোন', 'Default Delivery Zone')}
+                  </label>
+                  <select
+                    value={defaultZone}
+                    onChange={(e) => setDefaultZone(e.target.value as DeliveryZone)}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                  >
+                    <option value="inside_dhaka">{t('ঢাকার ভেতরে', 'Inside Dhaka')}</option>
+                    <option value="outside_dhaka">{t('ঢাকার বাইরে', 'Outside Dhaka')}</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  {t('পরিবর্তন সংরক্ষণ করুন', 'Save Changes')}
+                </button>
+              </form>
+
+              {/* Dedicated Past Order History Section on Account Overview */}
+              <section
+                aria-labelledby="past-order-history-heading"
+                className="pt-8 border-t border-slate-200 space-y-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2
+                      id="past-order-history-heading"
+                      className="text-base font-bold text-slate-900"
+                    >
+                      {t('পূর্ববর্তী অর্ডার হিস্ট্রি', 'Past Order History')}
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-0.5 tabular-nums">
+                      <span>
+                        {t('মোট অর্ডার:', 'Total orders:')} {orders.length}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {t('ডেলিভারি সম্পন্ন:', 'Delivered:')} {deliveredOrdersCount}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {t('চলমান:', 'In progress:')} {activeOrdersCount}
+                      </span>
+                    </div>
+                  </div>
+
+                  {orders.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFeedback(null);
+                        setSearchParams({ tab: 'orders' });
+                      }}
+                      className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      {t('সব অর্ডার দেখুন', 'View All Orders')}
+                    </button>
+                  )}
+                </div>
+
+                {ordersLoading ? (
+                  <p className="py-6 text-xs text-slate-500">
+                    {t('অর্ডার হিস্ট্রি লোড হচ্ছে...', 'Loading past orders...')}
+                  </p>
+                ) : orders.length === 0 ? (
+                  <div className="py-6 border-t border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">
+                      {t(
+                        'আপনার একাউন্টে এখনো কোনো পূর্ববর্তী অর্ডার পাওয়া যায়নি।',
+                        'No past orders found for your account yet.'
+                      )}
+                    </p>
+                    <Link
+                      to="/products"
+                      className="px-4 py-2 bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold rounded-lg whitespace-nowrap shrink-0 self-start sm:self-auto"
+                    >
+                      {t('পণ্য দেখুন', 'Browse Products')}
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500">
+                          <th className="py-2.5 pr-4">{t('অর্ডার নম্বর', 'Order')}</th>
+                          <th className="py-2.5 px-4">{t('তারিখ', 'Date')}</th>
+                          <th className="py-2.5 px-4">{t('অবস্থা', 'Status')}</th>
+                          <th className="py-2.5 px-4 text-right">
+                            {t('মোট পরিমাণ', 'Total Amount')}
+                          </th>
+                          <th className="py-2.5 pl-4 text-right">{t('অ্যাকশন', 'Action')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {orders.slice(0, 5).map((ord) => {
+                          const statusMeta = getOrderStatusMeta(ord.status, t);
+                          return (
+                            <tr key={ord.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-3 pr-4">
+                                <p className="font-bold text-slate-900 tabular-nums">
+                                  #{ord.orderNumber}
+                                </p>
+                                <p className="text-slate-500 tabular-nums">
+                                  {ord.itemCount}{' '}
+                                  {t('টি পণ্য', ord.itemCount === 1 ? 'item' : 'items')} ·{' '}
+                                  {ord.paymentMethod.toUpperCase()}
+                                </p>
+                              </td>
+                              <td className="py-3 px-4 text-slate-600 tabular-nums whitespace-nowrap">
+                                {formatOrderDate(ord.createdAt, lang)}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 font-semibold whitespace-nowrap ${statusMeta.colorClass}`}
+                                >
+                                  {renderStatusIcon(ord.status)}
+                                  <span>{statusMeta.label}</span>
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right font-extrabold text-[#0f5435] tabular-nums whitespace-nowrap">
+                                {formatTaka(ord.totalAmount)}
+                              </td>
+                              <td className="py-3 pl-4 text-right whitespace-nowrap">
+                                <Link
+                                  to={`/track-order/${ord.id}`}
+                                  className="inline-flex items-center gap-1 text-[#146c43] hover:text-[#0f5435] font-semibold hover:underline"
+                                >
+                                  <span>{t('ট্র্যাক করুন', 'Track')}</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </div>
           )}
 
           {/* TAB 2: ORDERS */}
           {activeTab === 'orders' && (
-            <div className="space-y-4">
-              <h2 className="text-base font-bold text-slate-900">
-                {t('অর্ডার হিস্ট্রি', 'Order History')}
-              </h2>
-              {orders.length === 0 ? (
-                <p className="text-xs text-slate-500">
-                  {t('আপনার এখনো কোনো অর্ডার নেই।', 'You have not placed any orders yet.')}
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {orders.map((ord) => (
-                    <div
-                      key={ord.id}
-                      className="p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+            <div className="space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    {t('পূর্ববর্তী অর্ডার হিস্ট্রি', 'Past Order History')}
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+                    {t('মোট অর্ডার:', 'Total orders:')} {orders.length} ·{' '}
+                    {t('ডেলিভারি সম্পন্ন:', 'Delivered:')} {deliveredOrdersCount} ·{' '}
+                    {t('চলমান:', 'In progress:')} {activeOrdersCount}
+                  </p>
+                </div>
+
+                {orders.length > 0 && (
+                  <div className="relative w-full sm:w-60">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={orderSearch}
+                      onChange={(e) => setOrderSearch(e.target.value)}
+                      placeholder={t('অর্ডার নম্বর খুঁজুন...', 'Search order #...')}
+                      className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {orders.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit">
+                  {(
+                    [
+                      { key: 'all', label: `${t('সব', 'All')} (${orders.length})` },
+                      { key: 'active', label: `${t('চলমান', 'Active')} (${activeOrdersCount})` },
+                      {
+                        key: 'delivered',
+                        label: `${t('ডেলিভারি সম্পন্ন', 'Delivered')} (${deliveredOrdersCount})`,
+                      },
+                      {
+                        key: 'cancelled',
+                        label: `${t('বাতিল / রিফান্ড', 'Cancelled')} (${
+                          orders.length - activeOrdersCount - deliveredOrdersCount
+                        })`,
+                      },
+                    ] as Array<{ key: OrderHistoryFilter; label: string }>
+                  ).map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setOrderFilter(tab.key)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer tabular-nums ${
+                        orderFilter === tab.key
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
                     >
-                      <div className="text-xs space-y-1">
-                        <p className="text-sm font-bold text-slate-900">#{ord.orderNumber}</p>
-                        <p className="text-slate-600">
-                          {t('অবস্থা:', 'Status:')} <strong>{ord.status}</strong> ·{' '}
-                          {t('পেমেন্ট:', 'Payment:')} {ord.paymentMethod.toUpperCase()} (
-                          {ord.paymentStatus})
-                        </p>
-                        <p className="text-slate-500">
-                          {t('ঠিকানা:', 'Address:')} {ord.area}, {ord.district}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-base font-extrabold text-[#0f5435] tabular-nums">
-                          {formatTaka(ord.totalAmount)}
-                        </span>
-                        <Link
-                          to={`/track-order/${ord.id}`}
-                          className="px-3.5 py-2 bg-[#edf6f1] hover:bg-[#dceee4] text-[#0f5435] text-xs font-bold rounded-lg"
-                        >
-                          {t('বিস্তারিত ও ট্র্যাকিং', 'Details & Tracking')}
-                        </Link>
-                      </div>
-                    </div>
+                      {tab.label}
+                    </button>
                   ))}
+                </div>
+              )}
+
+              {ordersLoading ? (
+                <p className="py-8 text-center text-xs text-slate-500">
+                  {t('আপনার অর্ডার হিস্ট্রি লোড হচ্ছে...', 'Loading your order history...')}
+                </p>
+              ) : orders.length === 0 ? (
+                <div className="py-8 text-center space-y-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-500">
+                    {t('আপনার এখনো কোনো অর্ডার নেই।', 'You have not placed any orders yet.')}
+                  </p>
+                  <Link
+                    to="/products"
+                    className="inline-block px-5 py-2 bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold rounded-lg whitespace-nowrap shrink-0"
+                  >
+                    {t('কেনাকাটা শুরু করুন', 'Start Shopping')}
+                  </Link>
+                </div>
+              ) : filteredOrders.length === 0 ? (
+                <div className="py-8 text-center space-y-2 border-t border-slate-100">
+                  <p className="text-xs text-slate-500">
+                    {t(
+                      'নির্বাচিত ফিল্টারে কোনো অর্ডার পাওয়া যায়নি।',
+                      'No orders match your current filter or search.'
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderFilter('all');
+                      setOrderSearch('');
+                    }}
+                    className="text-xs font-semibold text-[#146c43] hover:underline cursor-pointer"
+                  >
+                    {t('ফিল্টার রিসেট করুন', 'Reset filters')}
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200 border-t border-b border-slate-200">
+                  {filteredOrders.map((ord) => {
+                    const statusMeta = getOrderStatusMeta(ord.status, t);
+                    const isExpanded = expandedOrderId === ord.id;
+                    const cachedItems = expandedItemsMap[ord.id];
+                    const isLoadingItems = loadingItemsOrderId === ord.id;
+
+                    return (
+                      <div key={ord.id} className="py-4 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="text-xs space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-bold text-slate-900 tabular-nums">
+                                #{ord.orderNumber}
+                              </span>
+                              <span className="text-slate-300" aria-hidden="true">
+                                ·
+                              </span>
+                              <span className="text-slate-600 tabular-nums">
+                                {t('তারিখ:', 'Date:')} {formatOrderDate(ord.createdAt, lang)}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-slate-600">
+                              <span
+                                className={`inline-flex items-center gap-1 font-semibold ${statusMeta.colorClass}`}
+                              >
+                                {renderStatusIcon(ord.status)}
+                                <span>
+                                  {t('অবস্থা:', 'Status:')} {statusMeta.label}
+                                </span>
+                              </span>
+                              <span aria-hidden="true">·</span>
+                              <span className="tabular-nums">
+                                {ord.itemCount}{' '}
+                                {t('টি পণ্য', ord.itemCount === 1 ? 'item' : 'items')}
+                              </span>
+                              <span aria-hidden="true">·</span>
+                              <span>
+                                {t('পেমেন্ট:', 'Payment:')} {ord.paymentMethod.toUpperCase()} (
+                                {formatPaymentStatusLabel(ord.paymentStatus, t)})
+                              </span>
+                            </div>
+
+                            <p className="text-slate-500">
+                              {t('ঠিকানা:', 'Address:')} {ord.area}, {ord.district}
+                              {ord.trackingReference
+                                ? ` · ${t('ট্র্যাকিং রেফারেন্স:', 'Tracking Ref:')} ${ord.trackingReference}`
+                                : ''}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3 shrink-0">
+                            <div className="sm:text-right mr-1">
+                              <p className="text-[11px] text-slate-500">
+                                {t('সর্বমোট', 'Total Amount')}
+                              </p>
+                              <p className="text-base font-extrabold text-[#0f5435] tabular-nums">
+                                {formatTaka(ord.totalAmount)}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleOrderItems(ord.id)}
+                              className="px-3 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                            >
+                              <span>{t('পণ্যের তালিকা', 'Items')}</span>
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            <Link
+                              to={`/track-order/${ord.id}`}
+                              className="px-3.5 py-2 bg-[#edf6f1] hover:bg-[#dceee4] text-[#0f5435] text-xs font-bold rounded-lg whitespace-nowrap shrink-0"
+                            >
+                              {t('বিস্তারিত ও ট্র্যাকিং', 'Details & Tracking')}
+                            </Link>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="pt-3 pl-0 sm:pl-4 border-t border-slate-100 space-y-2 text-xs">
+                            {isLoadingItems ? (
+                              <p className="text-slate-500 py-2">
+                                {t('পণ্যের বিবরণ লোড হচ্ছে...', 'Loading ordered items...')}
+                              </p>
+                            ) : !cachedItems || cachedItems.length === 0 ? (
+                              <p className="text-slate-500 py-2">
+                                {t(
+                                  'পণ্যের বিস্তারিত দেখতে ট্র্যাকিং পেজে যান।',
+                                  'Open Details & Tracking to view full receipt details.'
+                                )}
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="divide-y divide-slate-100">
+                                  {cachedItems.map((item) => (
+                                    <div
+                                      key={item.id}
+                                      className="py-2 flex items-center justify-between gap-3"
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-10 h-10 rounded bg-[#f6faf7] shrink-0 overflow-hidden">
+                                          <ResilientImage
+                                            src={item.imageUrl}
+                                            alt={item.productName}
+                                            className="w-full h-full object-contain p-1"
+                                          />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="font-semibold text-slate-900 truncate">
+                                            {item.productName}
+                                          </p>
+                                          <p className="text-slate-500 tabular-nums">
+                                            {formatTaka(item.unitPrice)} × {item.quantity}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <span className="font-bold text-slate-900 tabular-nums whitespace-nowrap">
+                                        {formatTaka(item.lineTotal)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-end gap-4 text-slate-600 tabular-nums">
+                                  <span>
+                                    {t('সাবটোটাল:', 'Subtotal:')} {formatTaka(ord.subtotal)}
+                                  </span>
+                                  {ord.discountAmount > 0 && (
+                                    <span className="text-[#146c43]">
+                                      {t('ছাড়:', 'Discount:')} -{formatTaka(ord.discountAmount)}
+                                    </span>
+                                  )}
+                                  <span>
+                                    {t('ডেলিভারি চার্জ:', 'Delivery:')} {formatTaka(ord.deliveryFee)}
+                                  </span>
+                                  <span className="font-bold text-slate-900">
+                                    {t('সর্বমোট:', 'Total:')} {formatTaka(ord.totalAmount)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -845,11 +1496,11 @@ export function AccountPage() {
                     );
                   } catch (err) {
                     setFeedback(
-                      err instanceof Error
+                      err instanceof Error && !err.message.includes('Firebase:')
                         ? err.message
                         : t(
-                            'পাসওয়ার্ড পরিবর্তনে সমস্যা হয়েছে (Google একাউন্টের ক্ষেত্রে পাসওয়ার্ড Google থেকে নিয়ন্ত্রিত)।',
-                            'Could not update password (for Google Sign-In accounts, passwords are managed via Google).'
+                            'পাসওয়ার্ড পরিবর্তনে সমস্যা হয়েছে। বর্তমান পাসওয়ার্ডটি সঠিকভাবে লিখে আবার চেষ্টা করুন।',
+                            'Could not update password. Please verify your current password and try again.'
                           )
                     );
                   }

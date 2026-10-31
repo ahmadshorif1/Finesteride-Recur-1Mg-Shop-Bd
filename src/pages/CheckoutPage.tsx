@@ -3,7 +3,10 @@ import {
   CheckCircle2,
   FileCheck2,
   Lock,
+  MailWarning,
   MapPin,
+  RefreshCw,
+  Send,
   ShieldAlert,
   Tag,
   Wallet,
@@ -36,7 +39,14 @@ import type {
 } from '../types/pharmacy';
 
 export function CheckoutPage() {
-  const { user, userPublic, userPrivate } = useAuth();
+  const {
+    user,
+    userPublic,
+    userPrivate,
+    emailVerified,
+    resendVerification,
+    refreshVerificationState,
+  } = useAuth();
   const {
     items,
     subtotal,
@@ -80,6 +90,8 @@ export function CheckoutPage() {
   const [rxModalOpen, setRxModalOpen] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [verifyNotice, setVerifyNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -210,6 +222,18 @@ export function CheckoutPage() {
       navigate('/login?redirect=/checkout');
       return;
     }
+    if (!emailVerified) {
+      const refreshed = await refreshVerificationState().catch(() => false);
+      if (!refreshed) {
+        setErrorMsg(
+          t(
+            'অর্ডার কনফার্ম করার আগে অনুগ্রহ করে আপনার ইমেইল ভেরিফিকেশন সম্পন্ন করুন (উপরের ভেরিফাই বক্স দেখুন)।',
+            'Please verify your email address before confirming your order (see the verification banner above).'
+          )
+        );
+        return;
+      }
+    }
     if (!isValidBangladeshPhone(customerPhone)) {
       setErrorMsg(
         t(
@@ -338,7 +362,7 @@ export function CheckoutPage() {
         {t('নিরাপদ চেকআউট (Secure Checkout)', 'Secure Checkout')}
       </h1>
 
-      {/* Authentication Gate */}
+      {/* Authentication & Email Verification Gate */}
       {!user ? (
         <div className="mb-6 p-5 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="text-xs text-amber-900">
@@ -347,8 +371,8 @@ export function CheckoutPage() {
             </p>
             <p className="mt-0.5">
               {t(
-                'নিরাপদ অর্ডার ট্র্যাকিং ও ডাটা সুরক্ষার জন্য আপনার কাস্টমার একাউন্টে সাইন ইন করুন। আপনার কার্টের সকল পণ্য সংরক্ষিত থাকবে।',
-                'Sign in to your customer account for secure order tracking and data protection. All items in your cart will be preserved.'
+                'নিরাপদ অর্ডার ট্র্যাকিং ও ডাটা সুরক্ষার জন্য আপনার কাস্টমার একাউন্টে ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন। আপনার কার্টের সকল পণ্য সংরক্ষিত থাকবে।',
+                'Sign in with your email and password for secure order tracking and data protection. All items in your cart will be preserved.'
               )}
             </p>
           </div>
@@ -358,6 +382,77 @@ export function CheckoutPage() {
           >
             {t('লগইন / রেজিস্ট্রেশন করুন', 'Login / Register')}
           </Link>
+        </div>
+      ) : !emailVerified ? (
+        <div className="mb-6 p-5 rounded-2xl bg-amber-50 border border-amber-200 space-y-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="text-xs text-amber-950 flex items-start gap-2.5">
+              <MailWarning className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm">
+                  {t('অর্ডার নিশ্চিত করতে ইমেইল ভেরিফিকেশন প্রয়োজন', 'Email Verification Required to Confirm Order')}
+                </p>
+                <p className="mt-0.5 text-amber-800">
+                  {t(
+                    `${user.email} ঠিকানায় পাঠানো ভেরিফিকেশন লিংকে ক্লিক করে নিচের যাচাই বাটনে ক্লিক করুন (Spam ফোল্ডারও চেক করুন)।`,
+                    `Click the verification link sent to ${user.email} (check Spam too), then click Verify Status below.`
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={verifyingEmail}
+                onClick={async () => {
+                  setVerifyingEmail(true);
+                  setVerifyNotice(null);
+                  setErrorMsg(null);
+                  try {
+                    const ok = await refreshVerificationState();
+                    setVerifyNotice(
+                      ok
+                        ? t('ইমেইল ভেরিফাই সম্পন্ন হয়েছে! এখন অর্ডার কনফার্ম করতে পারেন।', 'Email verified! You can now confirm your order.')
+                        : t('এখনো ভেরিফাই সম্পন্ন হয়নি। ইমেইলের লিংকে ক্লিক করে আবার চেষ্টা করুন।', 'Email not verified yet. Click the link in your email first.')
+                    );
+                  } finally {
+                    setVerifyingEmail(false);
+                  }
+                }}
+                className="px-4 py-2 bg-[#146c43] hover:bg-[#0f5435] text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${verifyingEmail ? 'animate-spin' : ''}`} />
+                <span>{t('ভেরিফিকেশন যাচাই করুন', 'Verify Status')}</span>
+              </button>
+              <button
+                type="button"
+                disabled={verifyingEmail}
+                onClick={async () => {
+                  setVerifyingEmail(true);
+                  setVerifyNotice(null);
+                  try {
+                    await resendVerification();
+                    setVerifyNotice(
+                      t('নতুন ভেরিফিকেশন লিংক আপনার ইমেইলে পাঠানো হয়েছে।', 'Verification email sent! Please check your inbox.')
+                    );
+                  } catch {
+                    setVerifyNotice(
+                      t('ভেরিফিকেশন লিংক ইতিমধ্যে পাঠানো হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।', 'Verification link was recently sent. Please check your inbox or wait a moment.')
+                    );
+                  } finally {
+                    setVerifyingEmail(false);
+                  }
+                }}
+                className="px-4 py-2 bg-white border border-amber-300 hover:bg-amber-100/50 text-amber-950 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{t('লিংক পুনরায় পাঠান', 'Resend Link')}</span>
+              </button>
+            </div>
+          </div>
+          {verifyNotice && (
+            <p className="text-xs font-semibold text-[#0f5435] pl-7">{verifyNotice}</p>
+          )}
         </div>
       ) : null}
 

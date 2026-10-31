@@ -1,20 +1,12 @@
 import { getApps, initializeApp } from 'firebase/app';
 import {
   browserLocalPersistence,
-  browserPopupRedirectResolver,
   browserSessionPersistence,
   getAuth,
-  getRedirectResult,
-  GoogleAuthProvider,
   indexedDBLocalPersistence,
   initializeAuth,
   inMemoryPersistence,
-  signInWithCredential,
-  signInWithPopup,
-  signInWithRedirect,
-  signOut,
   type Auth,
-  type UserCredential,
 } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -49,8 +41,6 @@ function resolveSafeAuthDomain(
     return fallbackAuthDomain;
   }
 
-  // Prevent accidental Vercel URL placement in VITE_FIREBASE_AUTH_DOMAIN when using the shared Firebase project,
-  // since Google OAuth 2.0 Web Client redirect_uri is registered against <projectId>.firebaseapp.com.
   if (
     projectId === appletFirebaseConfig.projectId &&
     (cleaned.endsWith('.vercel.app') || !cleaned.includes('.'))
@@ -118,7 +108,9 @@ export const firebaseConnectionSummary = {
   ].join('\n'),
 };
 
-const app = getApps().find((existing) => existing.name === '[DEFAULT]') || initializeApp(resolvedFirebaseConfig);
+const app =
+  getApps().find((existing) => existing.name === '[DEFAULT]') ||
+  initializeApp(resolvedFirebaseConfig);
 
 export const db =
   activeFirestoreDatabaseId === '(default)'
@@ -137,7 +129,6 @@ function createResilientAuth(): Auth {
         browserSessionPersistence,
         inMemoryPersistence,
       ],
-      popupRedirectResolver: browserPopupRedirectResolver,
     });
   } catch {
     return getAuth(app);
@@ -146,134 +137,6 @@ function createResilientAuth(): Auth {
 
 export const auth: Auth = createResilientAuth();
 export const storage = getStorage(app);
-
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('email');
-googleProvider.addScope('profile');
-googleProvider.setCustomParameters({ prompt: 'select_account' });
-
-const hasDistinctAppletBridge = Boolean(
-  usingEnvOverride &&
-    appletFirebaseConfig.apiKey &&
-    appletFirebaseConfig.projectId &&
-    appletFirebaseConfig.projectId !== resolvedFirebaseConfig.projectId
-);
-
-const oauthBridgeAuth = hasDistinctAppletBridge
-  ? getAuth(
-      getApps().find((existing) => existing.name === 'aistudio-oauth-bridge') ||
-        initializeApp(appletFirebaseConfig, 'aistudio-oauth-bridge')
-    )
-  : null;
-
-function isInsideIframe(): boolean {
-  try {
-    return typeof window !== 'undefined' && window.self !== window.top;
-  } catch {
-    return true;
-  }
-}
-
-function isSameOriginAuthDomain(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.location.hostname.toLowerCase() === resolvedFirebaseConfig.authDomain.toLowerCase();
-}
-
-// Pre-warm Firebase's BrowserPopupRedirectResolver (loads gapi.iframes + __/auth/iframe ahead of user click).
-// Without proactive pre-warming on desktop Chrome/Edge/Windows, signInWithPopup performs 3 sequential network
-// round-trips before calling window.open(), expiring transient user activation and triggering auth/popup-blocked!
-let popupResolverWarmPromise: Promise<unknown> | null = null;
-
-export function warmUpGooglePopupResolver(): Promise<unknown> {
-  if (typeof window === 'undefined') return Promise.resolve();
-  if (popupResolverWarmPromise) return popupResolverWarmPromise;
-
-  try {
-    const internalAuth = auth as unknown as {
-      _popupRedirectResolver?: {
-        _initialize?: (authInstance: unknown) => Promise<unknown>;
-      };
-    };
-    const maybePromise = internalAuth._popupRedirectResolver?._initialize?.(auth);
-    if (maybePromise) {
-      popupResolverWarmPromise = maybePromise.catch((err) => {
-        popupResolverWarmPromise = null;
-        return err;
-      });
-      return popupResolverWarmPromise;
-    }
-  } catch {
-    popupResolverWarmPromise = null;
-  }
-  return Promise.resolve();
-}
-
-if (typeof window !== 'undefined') {
-  // Proactively warm popup resolver shortly after boot so Google Sign-In opens instantaneously on first click
-  window.setTimeout(() => {
-    void warmUpGooglePopupResolver();
-  }, 50);
-}
-
-let lastRedirectError: unknown = null;
-
-export function consumeLastRedirectError(): unknown {
-  const err = lastRedirectError;
-  lastRedirectError = null;
-  return err;
-}
-
-export async function resolvePendingGoogleRedirect(): Promise<UserCredential | null> {
-  try {
-    return await getRedirectResult(auth, browserPopupRedirectResolver);
-  } catch (err) {
-    lastRedirectError = err;
-    return null;
-  }
-}
-
-export async function signInWithGoogleSmart(): Promise<UserCredential | null> {
-  try {
-    return await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-
-    // If running in an environment with a distinct pre-authorized bridge and primary domain isn't authorized yet
-    if (msg.includes('auth/unauthorized-domain') && oauthBridgeAuth) {
-      const bridgeResult = await signInWithPopup(
-        oauthBridgeAuth,
-        googleProvider,
-        browserPopupRedirectResolver
-      );
-      const oauthCred = GoogleAuthProvider.credentialFromResult(bridgeResult);
-      void signOut(oauthBridgeAuth).catch(() => {});
-
-      if (!oauthCred?.accessToken && !oauthCred?.idToken) {
-        throw new Error('Google একাউন্ট থেকে অনুমোদিত টোকেন পাওয়া যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
-      }
-
-      const targetCredential = oauthCred.accessToken
-        ? GoogleAuthProvider.credential(null, oauthCred.accessToken)
-        : GoogleAuthProvider.credential(oauthCred.idToken);
-
-      return await signInWithCredential(auth, targetCredential);
-    }
-
-    // IMPORTANT: Only fall back to signInWithRedirect when popups are strictly unsupported in the environment
-    // AND authDomain matches current origin (otherwise modern browser third-party storage partitioning silently
-    // drops cross-domain redirect sessions on *.vercel.app <-> *.firebaseapp.com).
-    if (
-      msg.includes('auth/operation-not-supported-in-this-environment') &&
-      !isInsideIframe() &&
-      isSameOriginAuthDomain()
-    ) {
-      await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
-      return null;
-    }
-
-    throw err;
-  }
-}
 
 export enum OperationType {
   CREATE = 'create',

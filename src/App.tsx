@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { CartDrawer } from './components/CartDrawer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Footer } from './components/Footer';
@@ -30,6 +30,23 @@ import {
   PolicyPage,
 } from './pages/StoreInfoPages';
 
+function FirebaseAuthActionBridge() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (location.pathname === '/' && location.search.includes('oobCode=')) {
+      const params = new URLSearchParams(location.search);
+      const mode = params.get('mode');
+      if (mode === 'resetPassword' || mode === 'verifyEmail') {
+        navigate(`/login${location.search}`, { replace: true });
+      }
+    }
+  }, [location.pathname, location.search, navigate]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -38,6 +55,7 @@ export default function App() {
           <StoreProvider>
             <CartProvider>
               <BrowserRouter>
+                <FirebaseAuthActionBridge />
                 <div className="min-h-screen flex flex-col bg-[#f8faf9] text-slate-900">
                   <Header />
 
@@ -50,6 +68,7 @@ export default function App() {
                     <Route path="/checkout" element={<CheckoutPage />} />
                     <Route path="/login" element={<AuthPage />} />
                     <Route path="/register" element={<AuthPage />} />
+                    <Route path="/forgot-password" element={<AuthPage />} />
                     <Route path="/account" element={<AccountPage />} />
                     <Route path="/track-order" element={<OrderTrackingPage />} />
                     <Route path="/track-order/:orderId" element={<OrderTrackingPage />} />
