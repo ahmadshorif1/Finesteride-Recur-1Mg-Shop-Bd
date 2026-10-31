@@ -61,6 +61,27 @@ const usingEnvOverride = Boolean(
 const appletCfgRecord = appletFirebaseConfig as Record<string, string | undefined>;
 const resolvedProjectId = envProjectId || appletFirebaseConfig.projectId;
 
+export const resolvedDatabaseUrl: string =
+  cleanEnvValue(import.meta.env.VITE_FIREBASE_DATABASE_URL) ||
+  appletCfgRecord.databaseURL ||
+  '';
+
+function resolveSafeDatabaseId(rawDbId: unknown, projectId: string, fallbackDbId: string): string {
+  const cleaned = cleanEnvValue(rawDbId);
+  if (!cleaned) return fallbackDbId || '(default)';
+  const lower = cleaned.toLowerCase();
+  if (lower === '(default)' || lower === 'default') {
+    return '(default)';
+  }
+  if (
+    projectId === 'admin-panel-5ecd8' &&
+    (lower === 'adminpanel' || lower === 'admin-panel' || lower === 'admin-panel-5ecd8')
+  ) {
+    return '(default)';
+  }
+  return cleaned;
+}
+
 // Prefer explicit VITE_FIREBASE_* environment variables when connecting to a verified external shared Admin project,
 // with automatic sanitization and seamless fallback to firebase-applet-config.json.
 const resolvedFirebaseConfig = {
@@ -70,7 +91,7 @@ const resolvedFirebaseConfig = {
     resolvedProjectId,
     appletFirebaseConfig.authDomain
   ),
-  databaseURL: appletCfgRecord.databaseURL || undefined,
+  databaseURL: resolvedDatabaseUrl || undefined,
   projectId: resolvedProjectId,
   storageBucket:
     cleanEnvValue(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET) ||
@@ -85,10 +106,11 @@ const resolvedFirebaseConfig = {
     undefined,
 };
 
-export const activeFirestoreDatabaseId: string =
-  cleanEnvValue(import.meta.env.VITE_FIREBASE_DATABASE_ID) ||
-  appletFirebaseConfig.firestoreDatabaseId ||
-  '(default)';
+export const activeFirestoreDatabaseId: string = resolveSafeDatabaseId(
+  import.meta.env.VITE_FIREBASE_DATABASE_ID,
+  resolvedProjectId,
+  appletFirebaseConfig.firestoreDatabaseId || '(default)'
+);
 
 export const firebaseConnectionSummary = {
   projectId: resolvedFirebaseConfig.projectId,

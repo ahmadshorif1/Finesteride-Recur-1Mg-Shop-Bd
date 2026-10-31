@@ -17,6 +17,10 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import {
+  isCatalogRecordActive,
+  normalizeProduct,
+} from '../lib/catalogMapper';
 import { auth, db, handleFirestoreError, OperationType, storage } from '../lib/firebase';
 import {
   generateSafeDocId,
@@ -500,70 +504,114 @@ export async function fetchPaginatedCatalogPage(params: {
   lastDoc?: QueryDocumentSnapshot | null;
 }): Promise<{ products: Product[]; lastVisible: QueryDocumentSnapshot | null; hasMore: boolean }> {
   const pageSize = params.pageSize || 12;
-  const constraints = [where('isActive', '==', true)];
-
-  if (params.categoryId && params.categoryId !== 'all') {
-    constraints.push(where('categoryId', '==', params.categoryId));
-  }
 
   try {
     const baseQuery = params.lastDoc
       ? query(
           collection(db, 'products'),
-          ...constraints,
           orderBy('name'),
           startAfter(params.lastDoc),
-          limit(pageSize + 1)
+          limit(Math.min(100, pageSize + 1))
         )
-      : query(collection(db, 'products'), ...constraints, orderBy('name'), limit(pageSize + 1));
+      : query(collection(db, 'products'), orderBy('name'), limit(Math.min(100, pageSize + 1)));
 
     const snap = await getDocs(baseQuery);
     const hasMore = snap.docs.length > pageSize;
     const sliced = hasMore ? snap.docs.slice(0, pageSize) : snap.docs;
-    const products = sliced.map((d) => ({ id: d.id, ...(d.data() as Omit<Product, 'id'>) }));
+    let products = sliced
+      .filter((d) => isCatalogRecordActive(d.data() as Record<string, unknown>))
+      .map((d) => normalizeProduct(d.id, d.data() as Record<string, unknown>));
+
+    if (params.categoryId && params.categoryId !== 'all') {
+      products = products.filter((p) => p.categoryId === params.categoryId);
+    }
+
     const lastVisible = sliced.length > 0 ? sliced[sliced.length - 1] : null;
     return { products, lastVisible, hasMore };
   } catch {
-    // Fallback query without composite index requirement if index is still building in Firestore
     try {
-      const fallbackQuery = query(
-        collection(db, 'products'),
-        where('isActive', '==', true),
-        limit(60)
-      );
-      const snap = await getDocs(fallbackQuery);
-      let all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Product, 'id'>) }));
+      const boundedQuery = query(collection(db, 'products'), limit(100));
+      const snap = await getDocs(boundedQuery);
+      let all = snap.docs
+        .filter((d) => isCatalogRecordActive(d.data() as Record<string, unknown>))
+        .map((d) => normalizeProduct(d.id, d.data() as Record<string, unknown>));
       if (params.categoryId && params.categoryId !== 'all') {
         all = all.filter((p) => p.categoryId === params.categoryId);
       }
       return { products: all, lastVisible: null, hasMore: false };
-    } catch (innerErr) {
-      handleFirestoreError(innerErr, OperationType.LIST, 'products');
+    } catch {
+      try {
+        const legacyQuery = query(
+          collection(db, 'products'),
+          where('isActive', '==', true),
+          limit(100)
+        );
+        const snap = await getDocs(legacyQuery);
+        let all = snap.docs
+          .filter((d) => isCatalogRecordActive(d.data() as Record<string, unknown>))
+          .map((d) => normalizeProduct(d.id, d.data() as Record<string, unknown>));
+        if (params.categoryId && params.categoryId !== 'all') {
+          all = all.filter((p) => p.categoryId === params.categoryId);
+        }
+        return { products: all, lastVisible: null, hasMore: false };
+      } catch (innerErr) {
+        handleFirestoreError(innerErr, OperationType.LIST, 'products');
+      }
     }
   }
 }
 
 export async function fetchProductBySlugOrId(slugOrId: string): Promise<Product | null> {
-  const clean = sanitizeSafeId(slugOrId, 128);
+  const rawTrimmed = String(slugOrId || '').trim().slice(0, 128);
+  const clean = sanitizeSafeId(rawTrimmed, 128);
+  const idCandidates = Array.from(new Set([rawTrimmed, clean].filter(Boolean)));
+  const candidateCollections = ['products', 'Products', 'medicines'];
+
   try {
-    const directRef = doc(db, 'products', clean);
-    const directSnap = await getDoc(directRef).catch(() => null);
-    if (directSnap && directSnap.exists()) {
-      const data = directSnap.data() as Omit<Product, 'id'>;
-      if (data.isActive) return { id: directSnap.id, ...data };
+    for (const colName of candidateCollections) {
+      for (const candidateId of idCandidates) {
+        const directSnap = await getDoc(doc(db, colName, candidateId)).catch(() => null);
+        if (directSnap && directSnap.exists()) {
+          const rawData = directSnap.data() as Record<string, unknown>;
+          if (isCatalogRecordActive(rawData)) {
+            return normalizeProduct(directSnap.id, rawData);
+          }
+        }
+      }
     }
 
-    const slugQuery = query(
-      collection(db, 'products'),
-      where('isActive', '==', true),
-      where('slug', '==', clean),
-      limit(1)
-    );
-    const slugSnap = await getDocs(slugQuery);
-    if (!slugSnap.empty) {
-      const docSnap = slugSnap.docs[0];
-      return { id: docSnap.id, ...(docSnap.data() as Omit<Product, 'id'>) };
+    // Try bounded slug query without requiring explicit isActive == true, then fallback to legacy filter
+    for (const colName of candidateCollections) {
+      try {
+        const boundedSlugSnap = await getDocs(
+          query(collection(db, colName), where('slug', '==', rawTrimmed), limit(5))
+        );
+        for (const docSnap of boundedSlugSnap.docs) {
+          const rawData = docSnap.data() as Record<string, unknown>;
+          if (isCatalogRecordActive(rawData)) {
+            return normalizeProduct(docSnap.id, rawData);
+          }
+        }
+      } catch {
+        try {
+          const legacySlugSnap = await getDocs(
+            query(
+              collection(db, colName),
+              where('isActive', '==', true),
+              where('slug', '==', clean),
+              limit(1)
+            )
+          );
+          if (!legacySlugSnap.empty) {
+            const docSnap = legacySlugSnap.docs[0];
+            return normalizeProduct(docSnap.id, docSnap.data() as Record<string, unknown>);
+          }
+        } catch {
+          // Ignore unavailable collection
+        }
+      }
     }
+
     return null;
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, `products/${clean}`);

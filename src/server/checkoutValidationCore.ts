@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { isCatalogRecordActive, normalizeProduct } from '../lib/catalogMapper.ts';
 
 export interface RuntimeFirebaseConfig {
   projectId: string;
@@ -49,7 +50,15 @@ export function loadFirebaseRuntimeConfig(): RuntimeFirebaseConfig {
 
   const envProjectId = cleanServerEnv(process.env.VITE_FIREBASE_PROJECT_ID);
   const envApiKey = cleanServerEnv(process.env.VITE_FIREBASE_API_KEY);
-  const envDbId = cleanServerEnv(process.env.VITE_FIREBASE_DATABASE_ID);
+  const rawEnvDbId = cleanServerEnv(process.env.VITE_FIREBASE_DATABASE_ID);
+  const lowerDb = rawEnvDbId.toLowerCase();
+  const resolvedProject = envProjectId || appletCfg?.projectId || '';
+  const envDbId =
+    lowerDb === 'default' ||
+    (resolvedProject === 'admin-panel-5ecd8' &&
+      (lowerDb === 'adminpanel' || lowerDb === 'admin-panel' || lowerDb === 'admin-panel-5ecd8'))
+      ? '(default)'
+      : rawEnvDbId;
 
   if (envProjectId && envApiKey) {
     return {
@@ -286,15 +295,19 @@ export async function runAuthoritativeCheckoutValidation(
     const pid = String(rawItem.productId || '').trim();
     const qty = Math.floor(Number(rawItem.quantity || 0));
 
-    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(pid) || qty < 1 || qty > 100) {
+    if (!/^[a-zA-Z0-9_.-]{1,128}$/.test(pid) || qty < 1 || qty > 100) {
       return {
         status: 400,
         payload: { error: msg(`অবৈধ পণ্যের তথ্য: ${pid}`, `Invalid product entry: ${pid}`) },
       };
     }
 
-    const product = await fetchPublicFirestoreDoc('products', pid, authHeader);
-    if (!product || product.isActive !== true) {
+    const rawProduct =
+      (await fetchPublicFirestoreDoc('products', pid, authHeader)) ||
+      (await fetchPublicFirestoreDoc('Products', pid, authHeader)) ||
+      (await fetchPublicFirestoreDoc('medicines', pid, authHeader));
+
+    if (!rawProduct || !isCatalogRecordActive(rawProduct)) {
       return {
         status: 400,
         payload: {
@@ -306,18 +319,19 @@ export async function runAuthoritativeCheckoutValidation(
       };
     }
 
-    const stock = Number(product.stockQuantity ?? 0);
-    const maxOrder = Number(product.maxOrderQuantity ?? 20);
-    const price = Number(product.price ?? 0);
-    const requiresRx = Boolean(product.requiresPrescription);
+    const normalized = normalizeProduct(pid, rawProduct);
+    const stock = normalized.stockQuantity;
+    const maxOrder = normalized.maxOrderQuantity;
+    const price = normalized.price;
+    const requiresRx = normalized.requiresPrescription;
 
     if (stock < qty) {
       return {
         status: 400,
         payload: {
           error: msg(
-            `"${String(product.name)}" পর্যাপ্ত স্টকে নেই (মজুদ আছে: ${stock} টি)।`,
-            `"${String(product.name)}" does not have enough stock (Available: ${stock}).`
+            `"${normalized.name}" পর্যাপ্ত স্টকে নেই (মজুদ আছে: ${stock} টি)।`,
+            `"${normalized.name}" does not have enough stock (Available: ${stock}).`
           ),
         },
       };
@@ -328,8 +342,8 @@ export async function runAuthoritativeCheckoutValidation(
         status: 400,
         payload: {
           error: msg(
-            `"${String(product.name)}" এক অর্ডারে সর্বোচ্চ ${maxOrder} টি কেনা যাবে।`,
-            `Maximum ${maxOrder} units of "${String(product.name)}" allowed per order.`
+            `"${normalized.name}" এক অর্ডারে সর্বোচ্চ ${maxOrder} টি কেনা যাবে।`,
+            `Maximum ${maxOrder} units of "${normalized.name}" allowed per order.`
           ),
         },
       };
@@ -340,8 +354,8 @@ export async function runAuthoritativeCheckoutValidation(
         status: 400,
         payload: {
           error: msg(
-            `"${String(product.name)}" এর মূল্য যাচাই করা যায়নি।`,
-            `Could not verify catalog price for "${String(product.name)}".`
+            `"${normalized.name}" এর মূল্য যাচাই করা যায়নি।`,
+            `Could not verify catalog price for "${normalized.name}".`
           ),
         },
       };
@@ -356,10 +370,10 @@ export async function runAuthoritativeCheckoutValidation(
 
     verifiedItems.push({
       productId: pid,
-      productName: String(product.name || ''),
-      brand: String(product.brand || ''),
-      packSize: String(product.packSize || ''),
-      imageUrl: String(product.imageUrl || ''),
+      productName: normalized.name,
+      brand: normalized.brand,
+      packSize: normalized.packSize,
+      imageUrl: normalized.imageUrl,
       requiresPrescription: requiresRx,
       quantity: qty,
       unitPrice: price,

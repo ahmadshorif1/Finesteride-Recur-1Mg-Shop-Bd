@@ -4,6 +4,7 @@
  */
 
 export const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
+export const SAFE_CATALOG_ID_REGEX = /^[a-zA-Z0-9_.-]+$/;
 export const BD_PHONE_REGEX = /^(\+?8801|01)[3-9]\d{8}$/;
 
 export function sanitizeText(value: string, maxLength: number): string {
@@ -24,7 +25,7 @@ export function sanitizeSafeId(value: string, maxLength = 128): string {
 }
 
 export function isValidDocumentId(id: string): boolean {
-  return typeof id === 'string' && id.length >= 1 && id.length <= 128 && SAFE_ID_REGEX.test(id);
+  return typeof id === 'string' && id.length >= 1 && id.length <= 128 && SAFE_CATALOG_ID_REGEX.test(id);
 }
 
 function toAsciiDigits(value: string): string {

@@ -478,13 +478,33 @@
       "schema": { "$ref": "#/entities/SiteSetting" },
       "description": "Public storefront settings, hero banners, delivery rates, and policy documents."
     },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSetting" },
+      "description": "Shared Admin Panel storefront settings alias."
+    },
+    "/banners/{bannerId}": {
+      "schema": { "$ref": "#/entities/SiteSetting" },
+      "description": "Shared Admin Panel promotional hero banners."
+    },
     "/categories/{categoryId}": {
       "schema": { "$ref": "#/entities/Category" },
       "description": "Shared pharmacy product categories."
     },
+    "/Categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Shared Admin Panel product categories alias."
+    },
     "/products/{productId}": {
       "schema": { "$ref": "#/entities/Product" },
       "description": "Shared pharmacy product catalog."
+    },
+    "/Products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Shared Admin Panel product catalog alias."
+    },
+    "/medicines/{medicineId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Shared Admin Panel medicine catalog alias."
     },
     "/coupons/{couponCode}": {
       "schema": { "$ref": "#/entities/Coupon" },

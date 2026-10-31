@@ -113,7 +113,16 @@ async function reconcileFirebaseEnvWithProvisionedApplet(): Promise<void> {
 
   // Always verify custom database IDs (e.g. "adminpanel") even when envProjectId === appletCfg.projectId,
   // because connecting Firestore SDK to a non-existent named database forces the client offline.
-  let verifiedDbId = candidateDbId;
+  const lowerCandidate = candidateDbId.toLowerCase();
+  let verifiedDbId =
+    lowerCandidate === 'default' ||
+    (targetProjectId === 'admin-panel-5ecd8' &&
+      (lowerCandidate === 'adminpanel' ||
+        lowerCandidate === 'admin-panel' ||
+        lowerCandidate === 'admin-panel-5ecd8'))
+      ? '(default)'
+      : candidateDbId;
+
   if (verifiedDbId !== '(default)') {
     const exists = await doesNamedDatabaseExist(targetProjectId, verifiedDbId, targetApiKey);
     if (!exists) {

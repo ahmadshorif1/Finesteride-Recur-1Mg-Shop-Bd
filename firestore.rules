@@ -15,6 +15,10 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidCatalogId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -27,7 +31,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Non-anonymous authenticated account (Google or Email/Password) — active immediately without extra verification
+    // Non-anonymous authenticated account
     function isActiveAccount() {
       return isSignedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
@@ -41,7 +45,7 @@ service cloud.firestore {
     }
 
     // Admin check:
-    // 1. Any UID explicitly registered in /admins/{uid} (supports both Google & Email/Password admin accounts without extra verification)
+    // 1. Any UID explicitly registered in /admins/{uid}
     // 2. Bootstrapped owner email when email_verified == true (blocks unverified email spoofing)
     function isAdmin() {
       return isActiveAccount() && (
@@ -54,6 +58,27 @@ service cloud.firestore {
       return val is string && val.size() >= minLen && val.size() <= maxLen;
     }
 
+    function isValidTimestampOrIso(val) {
+      return val is timestamp || (val is string && val.size() <= 64) || val is int;
+    }
+
+    // Active status check compatible with both Customer Panel (isActive: true)
+    // and external Admin Panel conventions (active/published/status or omitted isActive).
+    function isCatalogDocActive(data) {
+      return (!('isActive' in data) || data.isActive != false) &&
+        (!('active' in data) || data.active != false) &&
+        (!('published' in data) || data.published != false) &&
+        (!('isPublished' in data) || data.isPublished != false) &&
+        (!('status' in data) || (
+          data.status != 'inactive' &&
+          data.status != 'Inactive' &&
+          data.status != 'draft' &&
+          data.status != 'Draft' &&
+          data.status != 'archived' &&
+          data.status != 'Archived'
+        ));
+    }
+
     // =========================================================================
     // VALIDATION BLUEPRINTS (Pillar 2 - Anti-Update-Gap)
     // =========================================================================
@@ -63,144 +88,134 @@ service cloud.firestore {
         isValidId(data.uid) &&
         isBoundedString(data.email, 3, 160) &&
         (data.role == 'admin' || data.role == 'pharmacist') &&
-        data.createdAt is timestamp;
+        isValidTimestampOrIso(data.createdAt);
     }
 
     function isValidSiteSetting(data) {
-      return data.keys().hasAll([
-        'isPublic', 'brandName', 'tagline', 'heroKicker', 'heroTitle', 'heroSubtitle',
-        'heroDescription', 'heroCtaText', 'heroImageUrl', 'topBarDeliveryText',
-        'topBarAuthenticText', 'supportPhone', 'supportEmail', 'supportHours',
-        'officeAddress', 'insideDhakaFee', 'outsideDhakaFee', 'freeDeliveryThreshold',
-        'codEnabled', 'bkashEnabled', 'bkashInstructions', 'nagadEnabled',
-        'nagadInstructions', 'aboutContent', 'deliveryPolicy', 'returnPolicy',
-        'privacyPolicy', 'termsConditions', 'updatedAt'
-      ]) &&
-      data.keys().hasOnly([
-        'isPublic', 'brandName', 'tagline', 'heroKicker', 'heroTitle', 'heroSubtitle',
-        'heroDescription', 'heroCtaText', 'heroImageUrl', 'topBarDeliveryText',
-        'topBarAuthenticText', 'supportPhone', 'supportEmail', 'supportHours',
-        'officeAddress', 'insideDhakaFee', 'outsideDhakaFee', 'freeDeliveryThreshold',
-        'codEnabled', 'bkashEnabled', 'bkashInstructions', 'nagadEnabled',
-        'nagadInstructions', 'aboutContent', 'deliveryPolicy', 'returnPolicy',
-        'privacyPolicy', 'termsConditions', 'updatedAt'
-      ]) &&
-      data.isPublic is bool &&
-      isBoundedString(data.brandName, 2, 120) &&
-      isBoundedString(data.tagline, 2, 160) &&
-      isBoundedString(data.heroKicker, 2, 120) &&
-      isBoundedString(data.heroTitle, 2, 160) &&
-      isBoundedString(data.heroSubtitle, 2, 200) &&
-      isBoundedString(data.heroDescription, 2, 600) &&
-      isBoundedString(data.heroCtaText, 2, 60) &&
-      isBoundedString(data.heroImageUrl, 0, 500) &&
-      isBoundedString(data.topBarDeliveryText, 0, 140) &&
-      isBoundedString(data.topBarAuthenticText, 0, 140) &&
-      isBoundedString(data.supportPhone, 0, 40) &&
-      isBoundedString(data.supportEmail, 0, 120) &&
-      isBoundedString(data.supportHours, 0, 120) &&
-      isBoundedString(data.officeAddress, 0, 300) &&
-      data.insideDhakaFee is number && data.insideDhakaFee >= 0 && data.insideDhakaFee <= 5000 &&
-      data.outsideDhakaFee is number && data.outsideDhakaFee >= 0 && data.outsideDhakaFee <= 5000 &&
-      data.freeDeliveryThreshold is number && data.freeDeliveryThreshold >= 0 && data.freeDeliveryThreshold <= 100000 &&
-      data.codEnabled is bool &&
-      data.bkashEnabled is bool &&
-      isBoundedString(data.bkashInstructions, 0, 500) &&
-      data.nagadEnabled is bool &&
-      isBoundedString(data.nagadInstructions, 0, 500) &&
-      isBoundedString(data.aboutContent, 0, 4000) &&
-      isBoundedString(data.deliveryPolicy, 0, 4000) &&
-      isBoundedString(data.returnPolicy, 0, 4000) &&
-      isBoundedString(data.privacyPolicy, 0, 4000) &&
-      isBoundedString(data.termsConditions, 0, 4000) &&
-      data.updatedAt is timestamp;
+      return data.keys().size() >= 1 &&
+        data.keys().size() <= 45 &&
+        (!('isPublic' in data) || data.isPublic is bool) &&
+        (!('brandName' in data) || isBoundedString(data.brandName, 1, 140)) &&
+        (!('storeName' in data) || isBoundedString(data.storeName, 1, 140)) &&
+        (!('tagline' in data) || isBoundedString(data.tagline, 0, 200)) &&
+        (!('heroKicker' in data) || isBoundedString(data.heroKicker, 0, 140)) &&
+        (!('heroBadge' in data) || isBoundedString(data.heroBadge, 0, 140)) &&
+        (!('heroTitle' in data) || isBoundedString(data.heroTitle, 0, 200)) &&
+        (!('heroSubtitle' in data) || isBoundedString(data.heroSubtitle, 0, 240)) &&
+        (!('heroDescription' in data) || isBoundedString(data.heroDescription, 0, 1000)) &&
+        (!('heroCtaText' in data) || isBoundedString(data.heroCtaText, 0, 80)) &&
+        (!('heroImageUrl' in data) || isBoundedString(data.heroImageUrl, 0, 1000)) &&
+        (!('topBarDeliveryText' in data) || isBoundedString(data.topBarDeliveryText, 0, 200)) &&
+        (!('topBarAuthenticText' in data) || isBoundedString(data.topBarAuthenticText, 0, 200)) &&
+        (!('supportPhone' in data) || isBoundedString(data.supportPhone, 0, 60)) &&
+        (!('supportEmail' in data) || isBoundedString(data.supportEmail, 0, 160)) &&
+        (!('supportHours' in data) || isBoundedString(data.supportHours, 0, 160)) &&
+        (!('officeAddress' in data) || isBoundedString(data.officeAddress, 0, 400)) &&
+        (!('insideDhakaFee' in data) || (data.insideDhakaFee is number && data.insideDhakaFee >= 0 && data.insideDhakaFee <= 10000)) &&
+        (!('outsideDhakaFee' in data) || (data.outsideDhakaFee is number && data.outsideDhakaFee >= 0 && data.outsideDhakaFee <= 10000)) &&
+        (!('freeDeliveryThreshold' in data) || (data.freeDeliveryThreshold is number && data.freeDeliveryThreshold >= 0 && data.freeDeliveryThreshold <= 500000)) &&
+        (!('codEnabled' in data) || data.codEnabled is bool) &&
+        (!('bkashEnabled' in data) || data.bkashEnabled is bool) &&
+        (!('bkashInstructions' in data) || isBoundedString(data.bkashInstructions, 0, 1000)) &&
+        (!('nagadEnabled' in data) || data.nagadEnabled is bool) &&
+        (!('nagadInstructions' in data) || isBoundedString(data.nagadInstructions, 0, 1000)) &&
+        (!('aboutContent' in data) || isBoundedString(data.aboutContent, 0, 8000)) &&
+        (!('deliveryPolicy' in data) || isBoundedString(data.deliveryPolicy, 0, 8000)) &&
+        (!('returnPolicy' in data) || isBoundedString(data.returnPolicy, 0, 8000)) &&
+        (!('privacyPolicy' in data) || isBoundedString(data.privacyPolicy, 0, 8000)) &&
+        (!('termsConditions' in data) || isBoundedString(data.termsConditions, 0, 8000));
     }
 
     function isValidCategory(data) {
-      return data.keys().hasAll([
-        'nameBn', 'nameEn', 'slug', 'description', 'iconKey', 'imageUrl',
-        'sortOrder', 'isActive', 'featured', 'createdAt', 'updatedAt'
-      ]) &&
-      data.keys().hasOnly([
-        'nameBn', 'nameEn', 'slug', 'description', 'iconKey', 'imageUrl',
-        'sortOrder', 'isActive', 'featured', 'createdAt', 'updatedAt'
-      ]) &&
-      isBoundedString(data.nameBn, 1, 100) &&
-      isBoundedString(data.nameEn, 1, 100) &&
-      isValidId(data.slug) && data.slug.size() <= 100 &&
-      isBoundedString(data.description, 0, 500) &&
-      isBoundedString(data.iconKey, 0, 50) &&
-      isBoundedString(data.imageUrl, 0, 500) &&
-      data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 10000 &&
-      data.isActive is bool &&
-      data.featured is bool &&
-      data.createdAt is timestamp &&
-      data.updatedAt is timestamp;
+      return data.keys().size() >= 1 &&
+        data.keys().size() <= 25 &&
+        (
+          ('nameEn' in data && isBoundedString(data.nameEn, 1, 120)) ||
+          ('nameBn' in data && isBoundedString(data.nameBn, 1, 120)) ||
+          ('name' in data && isBoundedString(data.name, 1, 120)) ||
+          ('title' in data && isBoundedString(data.title, 1, 120))
+        ) &&
+        (!('slug' in data) || isBoundedString(data.slug, 0, 120)) &&
+        (!('description' in data) || isBoundedString(data.description, 0, 1000)) &&
+        (!('iconKey' in data) || isBoundedString(data.iconKey, 0, 80)) &&
+        (!('icon' in data) || isBoundedString(data.icon, 0, 120)) &&
+        (!('imageUrl' in data) || isBoundedString(data.imageUrl, 0, 1000)) &&
+        (!('image' in data) || isBoundedString(data.image, 0, 1000)) &&
+        (!('sortOrder' in data) || !(data.sortOrder is number) || (data.sortOrder >= 0 && data.sortOrder <= 100000)) &&
+        (!('isActive' in data) || data.isActive is bool) &&
+        (!('active' in data) || data.active is bool) &&
+        (!('featured' in data) || data.featured is bool);
     }
 
     function isValidProduct(data) {
-      return data.keys().hasAll([
-        'name', 'nameBn', 'slug', 'genericName', 'brand', 'categoryId',
-        'categoryNameBn', 'categoryNameEn', 'strength', 'packSize', 'price',
-        'compareAtPrice', 'stockQuantity', 'maxOrderQuantity', 'sku', 'imageUrl',
-        'description', 'usageInfo', 'storageInfo', 'warningText',
-        'requiresPrescription', 'isFeatured', 'demandLabel', 'isActive',
-        'createdAt', 'updatedAt'
-      ]) &&
-      data.keys().hasOnly([
-        'name', 'nameBn', 'slug', 'genericName', 'brand', 'categoryId',
-        'categoryNameBn', 'categoryNameEn', 'strength', 'packSize', 'price',
-        'compareAtPrice', 'stockQuantity', 'maxOrderQuantity', 'sku', 'imageUrl',
-        'description', 'usageInfo', 'storageInfo', 'warningText',
-        'requiresPrescription', 'isFeatured', 'demandLabel', 'isActive',
-        'createdAt', 'updatedAt'
-      ]) &&
-      isBoundedString(data.name, 2, 160) &&
-      isBoundedString(data.nameBn, 0, 160) &&
-      isValidId(data.slug) && data.slug.size() <= 140 &&
-      isBoundedString(data.genericName, 0, 160) &&
-      isBoundedString(data.brand, 1, 120) &&
-      isValidId(data.categoryId) && data.categoryId.size() <= 100 &&
-      isBoundedString(data.categoryNameBn, 0, 100) &&
-      isBoundedString(data.categoryNameEn, 0, 100) &&
-      isBoundedString(data.strength, 0, 80) &&
-      isBoundedString(data.packSize, 0, 80) &&
-      data.price is number && data.price > 0 && data.price <= 1000000 &&
-      data.compareAtPrice is number && data.compareAtPrice >= 0 && data.compareAtPrice <= 1000000 &&
-      data.stockQuantity is number && data.stockQuantity >= 0 && data.stockQuantity <= 1000000 &&
-      data.maxOrderQuantity is number && data.maxOrderQuantity >= 1 && data.maxOrderQuantity <= 500 &&
-      isBoundedString(data.sku, 0, 80) &&
-      isBoundedString(data.imageUrl, 0, 500) &&
-      isBoundedString(data.description, 0, 2500) &&
-      isBoundedString(data.usageInfo, 0, 1500) &&
-      isBoundedString(data.storageInfo, 0, 500) &&
-      isBoundedString(data.warningText, 0, 800) &&
-      data.requiresPrescription is bool &&
-      data.isFeatured is bool &&
-      isBoundedString(data.demandLabel, 0, 40) &&
-      data.isActive is bool &&
-      data.createdAt is timestamp &&
-      data.updatedAt is timestamp;
+      return data.keys().size() >= 1 &&
+        data.keys().size() <= 50 &&
+        (
+          ('name' in data && isBoundedString(data.name, 1, 200)) ||
+          ('title' in data && isBoundedString(data.title, 1, 200)) ||
+          ('productName' in data && isBoundedString(data.productName, 1, 200)) ||
+          ('nameBn' in data && isBoundedString(data.nameBn, 1, 200))
+        ) &&
+        (!('name' in data) || isBoundedString(data.name, 0, 200)) &&
+        (!('nameBn' in data) || isBoundedString(data.nameBn, 0, 200)) &&
+        (!('slug' in data) || isBoundedString(data.slug, 0, 160)) &&
+        (!('genericName' in data) || isBoundedString(data.genericName, 0, 200)) &&
+        (!('brand' in data) || isBoundedString(data.brand, 0, 140)) &&
+        (!('company' in data) || isBoundedString(data.company, 0, 140)) &&
+        (!('manufacturer' in data) || isBoundedString(data.manufacturer, 0, 140)) &&
+        (!('categoryId' in data) || isBoundedString(data.categoryId, 0, 120)) &&
+        (!('category' in data) || isBoundedString(data.category, 0, 120)) &&
+        (!('categoryName' in data) || isBoundedString(data.categoryName, 0, 120)) &&
+        (!('categoryNameBn' in data) || isBoundedString(data.categoryNameBn, 0, 120)) &&
+        (!('categoryNameEn' in data) || isBoundedString(data.categoryNameEn, 0, 120)) &&
+        (!('strength' in data) || isBoundedString(data.strength, 0, 100)) &&
+        (!('dosageForm' in data) || isBoundedString(data.dosageForm, 0, 100)) &&
+        (!('packSize' in data) || isBoundedString(data.packSize, 0, 100)) &&
+        (!('sku' in data) || isBoundedString(data.sku, 0, 100)) &&
+        (!('imageUrl' in data) || isBoundedString(data.imageUrl, 0, 1500)) &&
+        (!('image' in data) || isBoundedString(data.image, 0, 1500)) &&
+        (!('thumbnail' in data) || isBoundedString(data.thumbnail, 0, 1500)) &&
+        (!('images' in data) || (data.images is list && data.images.size() <= 20 && (data.images.size() == 0 || (data.images[0] is string && data.images[0].size() <= 1500)))) &&
+        (!('galleryUrls' in data) || (data.galleryUrls is list && data.galleryUrls.size() <= 20 && (data.galleryUrls.size() == 0 || (data.galleryUrls[0] is string && data.galleryUrls[0].size() <= 1500)))) &&
+        (!('description' in data) || isBoundedString(data.description, 0, 5000)) &&
+        (!('shortDescription' in data) || isBoundedString(data.shortDescription, 0, 2000)) &&
+        (!('usageInfo' in data) || isBoundedString(data.usageInfo, 0, 3000)) &&
+        (!('usageSummary' in data) || isBoundedString(data.usageSummary, 0, 3000)) &&
+        (!('storageInfo' in data) || isBoundedString(data.storageInfo, 0, 1500)) &&
+        (!('storageInstructions' in data) || isBoundedString(data.storageInstructions, 0, 1500)) &&
+        (!('warningText' in data) || isBoundedString(data.warningText, 0, 2000)) &&
+        (!('warnings' in data) || isBoundedString(data.warnings, 0, 2000)) &&
+        (!('demandLabel' in data) || isBoundedString(data.demandLabel, 0, 80)) &&
+        (!('highDemandLabel' in data) || isBoundedString(data.highDemandLabel, 0, 80)) &&
+        (!('price' in data) || (data.price is number && data.price >= 0 && data.price <= 1000000) || isBoundedString(data.price, 1, 30)) &&
+        (!('regularPrice' in data) || (data.regularPrice is number && data.regularPrice >= 0 && data.regularPrice <= 1000000) || isBoundedString(data.regularPrice, 0, 30)) &&
+        (!('offerPrice' in data) || (data.offerPrice is number && data.offerPrice >= 0 && data.offerPrice <= 1000000) || isBoundedString(data.offerPrice, 0, 30)) &&
+        (!('mrp' in data) || (data.mrp is number && data.mrp >= 0 && data.mrp <= 1000000) || isBoundedString(data.mrp, 0, 30)) &&
+        (!('unitPrice' in data) || (data.unitPrice is number && data.unitPrice >= 0 && data.unitPrice <= 1000000) || isBoundedString(data.unitPrice, 0, 30)) &&
+        (!('compareAtPrice' in data) || (data.compareAtPrice is number && data.compareAtPrice >= 0 && data.compareAtPrice <= 1000000) || isBoundedString(data.compareAtPrice, 0, 30)) &&
+        (!('stockQuantity' in data) || (data.stockQuantity is number && data.stockQuantity >= 0 && data.stockQuantity <= 1000000) || isBoundedString(data.stockQuantity, 0, 30)) &&
+        (!('stock' in data) || (data.stock is number && data.stock >= 0 && data.stock <= 1000000) || isBoundedString(data.stock, 0, 30));
+    }
+
+    function isValidBanner(data) {
+      return data.keys().size() >= 1 &&
+        data.keys().size() <= 25 &&
+        (!('title' in data) || isBoundedString(data.title, 0, 200)) &&
+        (!('subtitle' in data) || isBoundedString(data.subtitle, 0, 300)) &&
+        (!('imageUrl' in data) || isBoundedString(data.imageUrl, 0, 1500)) &&
+        (!('image' in data) || isBoundedString(data.image, 0, 1500));
     }
 
     function isValidCoupon(data) {
-      return data.keys().hasAll([
-        'code', 'discountType', 'discountValue', 'minOrderAmount',
-        'maxDiscountAmount', 'isActive', 'description', 'createdAt', 'updatedAt'
-      ]) &&
-      data.keys().hasOnly([
-        'code', 'discountType', 'discountValue', 'minOrderAmount',
-        'maxDiscountAmount', 'isActive', 'description', 'createdAt', 'updatedAt'
-      ]) &&
-      isValidId(data.code) && data.code.size() >= 2 && data.code.size() <= 40 &&
-      (data.discountType == 'percentage' || data.discountType == 'fixed') &&
-      data.discountValue is number && data.discountValue > 0 && data.discountValue <= 100000 &&
-      data.minOrderAmount is number && data.minOrderAmount >= 0 && data.minOrderAmount <= 1000000 &&
-      data.maxDiscountAmount is number && data.maxDiscountAmount >= 0 && data.maxDiscountAmount <= 1000000 &&
-      data.isActive is bool &&
-      isBoundedString(data.description, 0, 240) &&
-      data.createdAt is timestamp &&
-      data.updatedAt is timestamp;
+      return data.keys().size() >= 2 &&
+        data.keys().size() <= 20 &&
+        (!('code' in data) || (isValidId(data.code) && data.code.size() >= 2 && data.code.size() <= 40)) &&
+        (!('discountType' in data) || data.discountType == 'percentage' || data.discountType == 'fixed') &&
+        (!('discountValue' in data) || (data.discountValue is number && data.discountValue > 0 && data.discountValue <= 100000)) &&
+        (!('minOrderAmount' in data) || (data.minOrderAmount is number && data.minOrderAmount >= 0 && data.minOrderAmount <= 1000000)) &&
+        (!('maxDiscountAmount' in data) || (data.maxDiscountAmount is number && data.maxDiscountAmount >= 0 && data.maxDiscountAmount <= 1000000)) &&
+        (!('isActive' in data) || data.isActive is bool) &&
+        (!('description' in data) || isBoundedString(data.description, 0, 300));
     }
 
     function isValidUserPublic(data) {
@@ -264,7 +279,7 @@ service cloud.firestore {
         data.keys().hasOnly(['userId', 'productId', 'quantity', 'createdAt', 'updatedAt']) &&
         isValidId(data.userId) &&
         data.userId == request.auth.uid &&
-        isValidId(data.productId) &&
+        isValidCatalogId(data.productId) &&
         data.quantity is int && data.quantity >= 1 && data.quantity <= 100 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -376,11 +391,11 @@ service cloud.firestore {
       ]) &&
       isValidId(data.orderId) &&
       isValidId(data.userId) &&
-      isValidId(data.productId) &&
-      isBoundedString(data.productName, 1, 160) &&
-      isBoundedString(data.brand, 0, 120) &&
-      isBoundedString(data.packSize, 0, 80) &&
-      isBoundedString(data.imageUrl, 0, 500) &&
+      isValidCatalogId(data.productId) &&
+      isBoundedString(data.productName, 1, 200) &&
+      isBoundedString(data.brand, 0, 140) &&
+      isBoundedString(data.packSize, 0, 100) &&
+      isBoundedString(data.imageUrl, 0, 1500) &&
       data.requiresPrescription is bool &&
       data.quantity is int && data.quantity >= 1 && data.quantity <= 100 &&
       data.unitPrice is number && data.unitPrice > 0 && data.unitPrice <= 1000000 &&
@@ -388,18 +403,74 @@ service cloud.firestore {
       data.createdAt is timestamp;
     }
 
+    function catalogProductExists(productId) {
+      return exists(/databases/$(database)/documents/products/$(productId)) ||
+        exists(/databases/$(database)/documents/Products/$(productId)) ||
+        exists(/databases/$(database)/documents/medicines/$(productId));
+    }
+
+    function getCatalogProductData(productId) {
+      return exists(/databases/$(database)/documents/products/$(productId))
+        ? get(/databases/$(database)/documents/products/$(productId)).data
+        : (
+          exists(/databases/$(database)/documents/Products/$(productId))
+            ? get(/databases/$(database)/documents/Products/$(productId)).data
+            : get(/databases/$(database)/documents/medicines/$(productId)).data
+        );
+    }
+
+    function isCatalogProductRxRequired(prod) {
+      return ('requiresPrescription' in prod && prod.requiresPrescription == true) ||
+        ('prescriptionRequired' in prod && prod.prescriptionRequired == true) ||
+        ('isRx' in prod && prod.isRx == true);
+    }
+
+    function isCatalogProductInStockForQty(prod, qty) {
+      return (
+        ('stockQuantity' in prod && prod.stockQuantity is number && prod.stockQuantity >= qty) ||
+        (!('stockQuantity' in prod) && 'stock' in prod && prod.stock is number && prod.stock >= qty) ||
+        (!('stockQuantity' in prod) && !('stock' in prod) && 'quantity' in prod && prod.quantity is number && prod.quantity >= qty) ||
+        (!('stockQuantity' in prod) && !('stock' in prod) && !('quantity' in prod) && (!('inStock' in prod) || prod.inStock != false)) ||
+        ('stockQuantity' in prod && prod.stockQuantity is string) ||
+        ('stock' in prod && prod.stock is string)
+      ) &&
+      (!('maxOrderQuantity' in prod) || !(prod.maxOrderQuantity is number) || prod.maxOrderQuantity >= qty);
+    }
+
+    function matchesCatalogPrice(prod, unitPrice) {
+      return (
+        ('discountPrice' in prod && prod.discountPrice is number && prod.discountPrice > 0 && prod.discountPrice == unitPrice) ||
+        ('sellingPrice' in prod && prod.sellingPrice is number && prod.sellingPrice > 0 && prod.sellingPrice == unitPrice) ||
+        ('salePrice' in prod && prod.salePrice is number && prod.salePrice > 0 && prod.salePrice == unitPrice) ||
+        ('offerPrice' in prod && prod.offerPrice is number && prod.offerPrice > 0 && prod.offerPrice == unitPrice) ||
+        ('price' in prod && prod.price is number && prod.price == unitPrice) ||
+        ('regularPrice' in prod && prod.regularPrice is number && prod.regularPrice == unitPrice) ||
+        ('mrp' in prod && prod.mrp is number && prod.mrp == unitPrice) ||
+        ('unitPrice' in prod && prod.unitPrice is number && prod.unitPrice == unitPrice) ||
+        ('discountPrice' in prod && prod.discountPrice is string && prod.discountPrice.matches('^[0-9]+(\\.[0-9]+)?$') && float(prod.discountPrice) > 0 && float(prod.discountPrice) == unitPrice) ||
+        ('sellingPrice' in prod && prod.sellingPrice is string && prod.sellingPrice.matches('^[0-9]+(\\.[0-9]+)?$') && float(prod.sellingPrice) > 0 && float(prod.sellingPrice) == unitPrice) ||
+        ('offerPrice' in prod && prod.offerPrice is string && prod.offerPrice.matches('^[0-9]+(\\.[0-9]+)?$') && float(prod.offerPrice) > 0 && float(prod.offerPrice) == unitPrice) ||
+        ('price' in prod && prod.price is string && prod.price.matches('^[0-9]+(\\.[0-9]+)?$') && float(prod.price) == unitPrice) ||
+        ('regularPrice' in prod && prod.regularPrice is string && prod.regularPrice.matches('^[0-9]+(\\.[0-9]+)?$') && float(prod.regularPrice) == unitPrice) ||
+        ('mrp' in prod && prod.mrp is string && prod.mrp.matches('^[0-9]+(\\.[0-9]+)?$') && float(prod.mrp) == unitPrice)
+      );
+    }
+
     function isAuthorizedOrderItemAgainstCatalog(data, orderId) {
-      return exists(/databases/$(database)/documents/products/$(data.productId)) &&
-        get(/databases/$(database)/documents/products/$(data.productId)).data.isActive == true &&
-        get(/databases/$(database)/documents/products/$(data.productId)).data.stockQuantity >= data.quantity &&
-        get(/databases/$(database)/documents/products/$(data.productId)).data.maxOrderQuantity >= data.quantity &&
-        get(/databases/$(database)/documents/products/$(data.productId)).data.price == data.unitPrice &&
-        get(/databases/$(database)/documents/products/$(data.productId)).data.requiresPrescription == data.requiresPrescription &&
+      return catalogProductExists(data.productId) &&
+        isCatalogDocActive(getCatalogProductData(data.productId)) &&
+        isCatalogProductInStockForQty(getCatalogProductData(data.productId), data.quantity) &&
+        matchesCatalogPrice(getCatalogProductData(data.productId), data.unitPrice) &&
         (
-          data.requiresPrescription == false ||
           (
+            isCatalogProductRxRequired(getCatalogProductData(data.productId)) &&
+            data.requiresPrescription == true &&
             getAfter(/databases/$(database)/documents/orders/$(orderId)).data.requiresPrescription == true &&
             getAfter(/databases/$(database)/documents/orders/$(orderId)).data.prescriptionId.size() > 0
+          ) ||
+          (
+            !isCatalogProductRxRequired(getCatalogProductData(data.productId)) &&
+            data.requiresPrescription == false
           )
         );
     }
@@ -456,52 +527,82 @@ service cloud.firestore {
       allow get: if isSignedIn() && isValidId(adminId) && (isOwner(adminId) || isAdmin());
       allow list: if isAdmin();
       allow create: if isAdmin() && isValidId(adminId) && isValidAdmin(incoming()) &&
-        incoming().uid == adminId && incoming().createdAt == request.time;
+        incoming().uid == adminId;
       allow update: if isAdmin() && isValidId(adminId) && isValidAdmin(incoming()) &&
-        incoming().uid == existing().uid && incoming().createdAt == existing().createdAt;
+        incoming().uid == existing().uid;
       allow delete: if isAdmin() && isValidId(adminId);
     }
 
     match /siteSettings/{settingId} {
-      allow get: if isValidId(settingId) && (resource == null || existing().isPublic == true || isAdmin());
-      allow list: if existing().isPublic == true || isAdmin();
-      allow create: if isAdmin() && isValidId(settingId) && isValidSiteSetting(incoming()) &&
-        incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidId(settingId) && isValidSiteSetting(incoming()) &&
-        incoming().updatedAt == request.time;
-      allow delete: if isAdmin() && isValidId(settingId);
+      allow get: if isValidCatalogId(settingId) && (resource == null || !('isPublic' in existing()) || existing().isPublic == true || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 20) || existing().isPublic == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(settingId) && isValidSiteSetting(incoming());
+      allow update: if isAdmin() && isValidCatalogId(settingId) && isValidSiteSetting(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(settingId);
+    }
+
+    match /settings/{settingId} {
+      allow get: if isValidCatalogId(settingId) && (resource == null || !('isPublic' in existing()) || existing().isPublic == true || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 20) || existing().isPublic == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(settingId) && isValidSiteSetting(incoming());
+      allow update: if isAdmin() && isValidCatalogId(settingId) && isValidSiteSetting(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(settingId);
+    }
+
+    match /banners/{bannerId} {
+      allow get: if isValidCatalogId(bannerId) && (resource == null || isCatalogDocActive(existing()) || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 50) || existing().isActive == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(bannerId) && isValidBanner(incoming());
+      allow update: if isAdmin() && isValidCatalogId(bannerId) && isValidBanner(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(bannerId);
     }
 
     match /categories/{categoryId} {
-      allow get: if isValidId(categoryId) && (resource == null || existing().isActive == true || isAdmin());
-      allow list: if existing().isActive == true || isAdmin();
-      allow create: if isAdmin() && isValidId(categoryId) && isValidCategory(incoming()) &&
-        incoming().createdAt == request.time && incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidId(categoryId) && isValidCategory(incoming()) &&
-        incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
-      allow delete: if isAdmin() && isValidId(categoryId);
+      allow get: if isValidCatalogId(categoryId) && (resource == null || isCatalogDocActive(existing()) || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 100) || existing().isActive == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(categoryId) && isValidCategory(incoming());
+      allow update: if isAdmin() && isValidCatalogId(categoryId) && isValidCategory(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(categoryId);
+    }
+
+    match /Categories/{categoryId} {
+      allow get: if isValidCatalogId(categoryId) && (resource == null || isCatalogDocActive(existing()) || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 100) || existing().isActive == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(categoryId) && isValidCategory(incoming());
+      allow update: if isAdmin() && isValidCatalogId(categoryId) && isValidCategory(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(categoryId);
     }
 
     match /products/{productId} {
-      allow get: if isValidId(productId) && (resource == null || existing().isActive == true || isAdmin());
-      allow list: if existing().isActive == true || isAdmin();
-      allow create: if isAdmin() && isValidId(productId) && isValidProduct(incoming()) &&
-        incoming().createdAt == request.time && incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidId(productId) && isValidProduct(incoming()) &&
-        incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
-      allow delete: if isAdmin() && isValidId(productId);
+      allow get: if isValidCatalogId(productId) && (resource == null || isCatalogDocActive(existing()) || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 100) || existing().isActive == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(productId) && isValidProduct(incoming());
+      allow update: if isAdmin() && isValidCatalogId(productId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(productId);
+    }
+
+    match /Products/{productId} {
+      allow get: if isValidCatalogId(productId) && (resource == null || isCatalogDocActive(existing()) || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 100) || existing().isActive == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(productId) && isValidProduct(incoming());
+      allow update: if isAdmin() && isValidCatalogId(productId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(productId);
+    }
+
+    match /medicines/{medicineId} {
+      allow get: if isValidCatalogId(medicineId) && (resource == null || isCatalogDocActive(existing()) || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 100) || existing().isActive == true || isAdmin();
+      allow create: if isAdmin() && isValidCatalogId(medicineId) && isValidProduct(incoming());
+      allow update: if isAdmin() && isValidCatalogId(medicineId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(medicineId);
     }
 
     match /coupons/{couponCode} {
-      allow get: if isValidId(couponCode) && (resource == null || existing().isActive == true || isAdmin());
+      allow get: if isValidCatalogId(couponCode) && (resource == null || isCatalogDocActive(existing()) || isAdmin());
       allow list: if isAdmin();
-      allow create: if isAdmin() && isValidId(couponCode) && isValidCoupon(incoming()) &&
-        incoming().code == couponCode &&
-        incoming().createdAt == request.time && incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidId(couponCode) && isValidCoupon(incoming()) &&
-        incoming().code == existing().code &&
-        incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
-      allow delete: if isAdmin() && isValidId(couponCode);
+      allow create: if isAdmin() && isValidCatalogId(couponCode) && isValidCoupon(incoming());
+      allow update: if isAdmin() && isValidCatalogId(couponCode) && isValidCoupon(incoming());
+      allow delete: if isAdmin() && isValidCatalogId(couponCode);
     }
 
     match /users/{userId} {
@@ -611,10 +712,10 @@ service cloud.firestore {
 
       // Cross-Device Authenticated Shopping Cart (Secure List Enforcer on resource.data.userId)
       match /cart/{cartItemId} {
-        allow get: if isValidId(userId) && isValidId(cartItemId) && isOwner(userId) &&
+        allow get: if isValidId(userId) && isValidCatalogId(cartItemId) && isOwner(userId) &&
           (resource == null || exists(/databases/$(database)/documents/users/$(userId)));
         allow list: if isOwner(userId) && (resource == null || existing().userId == request.auth.uid);
-        allow create: if isActiveOwner(userId) && isValidId(userId) && isValidId(cartItemId) &&
+        allow create: if isActiveOwner(userId) && isValidId(userId) && isValidCatalogId(cartItemId) &&
           isValidCartItem(incoming()) &&
           incoming().userId == userId &&
           incoming().productId == cartItemId &&
@@ -623,9 +724,9 @@ service cloud.firestore {
             exists(/databases/$(database)/documents/users/$(userId)) ||
             existsAfter(/databases/$(database)/documents/users/$(userId))
           ) &&
-          exists(/databases/$(database)/documents/products/$(incoming().productId)) &&
-          get(/databases/$(database)/documents/products/$(incoming().productId)).data.isActive == true;
-        allow update: if isActiveOwner(userId) && isValidId(userId) && isValidId(cartItemId) &&
+          catalogProductExists(incoming().productId) &&
+          isCatalogDocActive(getCatalogProductData(incoming().productId));
+        allow update: if isActiveOwner(userId) && isValidId(userId) && isValidCatalogId(cartItemId) &&
           isValidCartItem(incoming()) &&
           exists(/databases/$(database)/documents/users/$(userId)) &&
           incoming().userId == existing().userId &&
@@ -633,7 +734,7 @@ service cloud.firestore {
           incoming().createdAt == existing().createdAt &&
           incoming().updatedAt == request.time &&
           incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'updatedAt']);
-        allow delete: if isActiveOwner(userId) && isValidId(userId) && isValidId(cartItemId);
+        allow delete: if isActiveOwner(userId) && isValidId(userId) && isValidCatalogId(cartItemId);
       }
     }
 
@@ -707,8 +808,7 @@ service cloud.firestore {
             isAdmin() &&
             incoming().userId == existing().userId &&
             incoming().idempotencyKey == existing().idempotencyKey &&
-            incoming().createdAt == existing().createdAt &&
-            incoming().updatedAt == request.time
+            incoming().createdAt == existing().createdAt
           ) ||
           (
             // Action: Customer requests order cancellation while Pending or Awaiting Review (non-terminal)
@@ -729,7 +829,7 @@ service cloud.firestore {
 
       // Order Line Items Subcollection (Pillar 1 + Authoritative Price Guard)
       match /items/{itemId} {
-        allow get: if isSignedIn() && isValidId(orderId) && isValidId(itemId) && (
+        allow get: if isSignedIn() && isValidId(orderId) && isValidCatalogId(itemId) && (
           isAdmin() ||
           (
             existing().userId == request.auth.uid &&
@@ -737,7 +837,7 @@ service cloud.firestore {
           )
         );
         allow list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
-        allow create: if isActiveAccount() && isValidId(orderId) && isValidId(itemId) &&
+        allow create: if isActiveAccount() && isValidId(orderId) && isValidCatalogId(itemId) &&
           isValidOrderItem(incoming()) &&
           incoming().orderId == orderId &&
           incoming().userId == request.auth.uid &&
@@ -745,12 +845,12 @@ service cloud.firestore {
           incoming().createdAt == request.time &&
           getAfter(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid &&
           isAuthorizedOrderItemAgainstCatalog(incoming(), orderId);
-        allow update: if isAdmin() && isValidId(orderId) && isValidId(itemId) &&
+        allow update: if isAdmin() && isValidId(orderId) && isValidCatalogId(itemId) &&
           isValidOrderItem(incoming()) &&
           incoming().orderId == existing().orderId &&
           incoming().userId == existing().userId &&
           incoming().createdAt == existing().createdAt;
-        allow delete: if isAdmin() && isValidId(orderId) && isValidId(itemId);
+        allow delete: if isAdmin() && isValidId(orderId) && isValidCatalogId(itemId);
       }
     }
 
@@ -774,8 +874,7 @@ service cloud.firestore {
           (
             isAdmin() &&
             incoming().userId == existing().userId &&
-            incoming().createdAt == existing().createdAt &&
-            incoming().updatedAt == request.time
+            incoming().createdAt == existing().createdAt
           ) ||
           (
             // Action: Owner marks notification as read
@@ -805,8 +904,7 @@ service cloud.firestore {
           (
             isAdmin() &&
             incoming().userId == existing().userId &&
-            incoming().createdAt == existing().createdAt &&
-            incoming().updatedAt == request.time
+            incoming().createdAt == existing().createdAt
           ) ||
           (
             // Action: Customer closes non-terminal ticket

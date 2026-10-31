@@ -9,6 +9,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { isCatalogRecordActive, normalizeProduct } from '../lib/catalogMapper';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { isValidDocumentId } from '../lib/validation';
 import type { CartDocItem, DeliveryZone, EnrichedCartItem, Product } from '../types/pharmacy';
@@ -157,13 +158,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const loadMissing = async () => {
       const loaded: Record<string, Product> = {};
       for (const id of missingIds) {
-        try {
-          const snap = await getDoc(doc(db, 'products', id));
-          if (snap.exists()) {
-            loaded[id] = { id: snap.id, ...(snap.data() as Omit<Product, 'id'>) };
+        for (const colName of ['products', 'Products', 'medicines']) {
+          try {
+            const snap = await getDoc(doc(db, colName, id));
+            if (snap.exists()) {
+              const rawData = snap.data() as Record<string, unknown>;
+              if (isCatalogRecordActive(rawData)) {
+                loaded[id] = normalizeProduct(snap.id, rawData);
+                break;
+              }
+            }
+          } catch {
+            // Product inactive or collection unavailable
           }
-        } catch {
-          // Product inactive or deleted
         }
       }
       if (Object.keys(loaded).length > 0) {

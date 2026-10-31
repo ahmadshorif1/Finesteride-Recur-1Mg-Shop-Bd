@@ -53,7 +53,7 @@ export function ProductsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    setHasMoreInCloud(catalogProducts.length >= 48);
+    setHasMoreInCloud(catalogProducts.length >= 100);
   }, [catalogProducts.length]);
 
   useEffect(() => {
