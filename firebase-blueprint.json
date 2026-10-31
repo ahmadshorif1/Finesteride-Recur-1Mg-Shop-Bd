@@ -1,0 +1,530 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized pharmacy administrator record mapped by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 160 },
+        "role": { "type": "string", "enum": ["admin", "pharmacist"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "SiteSetting": {
+      "title": "SiteSetting",
+      "description": "Administrator-managed storefront branding, hero banner, delivery rates, payment instructions, and policies.",
+      "type": "object",
+      "properties": {
+        "isPublic": { "type": "boolean" },
+        "brandName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "tagline": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "heroKicker": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "heroTitle": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "heroSubtitle": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "heroDescription": { "type": "string", "minLength": 2, "maxLength": 600 },
+        "heroCtaText": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "heroImageUrl": { "type": "string", "maxLength": 500 },
+        "topBarDeliveryText": { "type": "string", "maxLength": 140 },
+        "topBarAuthenticText": { "type": "string", "maxLength": 140 },
+        "supportPhone": { "type": "string", "maxLength": 40 },
+        "supportEmail": { "type": "string", "maxLength": 120 },
+        "supportHours": { "type": "string", "maxLength": 120 },
+        "officeAddress": { "type": "string", "maxLength": 300 },
+        "insideDhakaFee": { "type": "number" },
+        "outsideDhakaFee": { "type": "number" },
+        "freeDeliveryThreshold": { "type": "number" },
+        "codEnabled": { "type": "boolean" },
+        "bkashEnabled": { "type": "boolean" },
+        "bkashInstructions": { "type": "string", "maxLength": 500 },
+        "nagadEnabled": { "type": "boolean" },
+        "nagadInstructions": { "type": "string", "maxLength": 500 },
+        "aboutContent": { "type": "string", "maxLength": 4000 },
+        "deliveryPolicy": { "type": "string", "maxLength": 4000 },
+        "returnPolicy": { "type": "string", "maxLength": 4000 },
+        "privacyPolicy": { "type": "string", "maxLength": 4000 },
+        "termsConditions": { "type": "string", "maxLength": 4000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "isPublic",
+        "brandName",
+        "tagline",
+        "heroKicker",
+        "heroTitle",
+        "heroSubtitle",
+        "heroDescription",
+        "heroCtaText",
+        "heroImageUrl",
+        "topBarDeliveryText",
+        "topBarAuthenticText",
+        "supportPhone",
+        "supportEmail",
+        "supportHours",
+        "officeAddress",
+        "insideDhakaFee",
+        "outsideDhakaFee",
+        "freeDeliveryThreshold",
+        "codEnabled",
+        "bkashEnabled",
+        "bkashInstructions",
+        "nagadEnabled",
+        "nagadInstructions",
+        "aboutContent",
+        "deliveryPolicy",
+        "returnPolicy",
+        "privacyPolicy",
+        "termsConditions",
+        "updatedAt"
+      ]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Shared medicine and healthcare product category.",
+      "type": "object",
+      "properties": {
+        "nameBn": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "slug": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "description": { "type": "string", "maxLength": 500 },
+        "iconKey": { "type": "string", "maxLength": 50 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "nameBn",
+        "nameEn",
+        "slug",
+        "description",
+        "iconKey",
+        "imageUrl",
+        "sortOrder",
+        "isActive",
+        "featured",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Pharmacy product record shared between Admin Panel and Customer Panel.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "nameBn": { "type": "string", "maxLength": 160 },
+        "slug": { "type": "string", "minLength": 2, "maxLength": 140, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "genericName": { "type": "string", "maxLength": 160 },
+        "brand": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "categoryId": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "categoryNameBn": { "type": "string", "maxLength": 100 },
+        "categoryNameEn": { "type": "string", "maxLength": 100 },
+        "strength": { "type": "string", "maxLength": 80 },
+        "packSize": { "type": "string", "maxLength": 80 },
+        "price": { "type": "number" },
+        "compareAtPrice": { "type": "number" },
+        "stockQuantity": { "type": "number" },
+        "maxOrderQuantity": { "type": "number" },
+        "sku": { "type": "string", "maxLength": 80 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "description": { "type": "string", "maxLength": 2500 },
+        "usageInfo": { "type": "string", "maxLength": 1500 },
+        "storageInfo": { "type": "string", "maxLength": 500 },
+        "warningText": { "type": "string", "maxLength": 800 },
+        "requiresPrescription": { "type": "boolean" },
+        "isFeatured": { "type": "boolean" },
+        "demandLabel": { "type": "string", "maxLength": 40 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "name",
+        "nameBn",
+        "slug",
+        "genericName",
+        "brand",
+        "categoryId",
+        "categoryNameBn",
+        "categoryNameEn",
+        "strength",
+        "packSize",
+        "price",
+        "compareAtPrice",
+        "stockQuantity",
+        "maxOrderQuantity",
+        "sku",
+        "imageUrl",
+        "description",
+        "usageInfo",
+        "storageInfo",
+        "warningText",
+        "requiresPrescription",
+        "isFeatured",
+        "demandLabel",
+        "isActive",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Promotional discount coupon configured by authorized administrators.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 40, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "minOrderAmount": { "type": "number" },
+        "maxDiscountAmount": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "description": { "type": "string", "maxLength": 240 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "code",
+        "discountType",
+        "discountValue",
+        "minOrderAmount",
+        "maxDiscountAmount",
+        "isActive",
+        "description",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPublic": {
+      "title": "UserPublic",
+      "description": "Non-PII customer account metadata and bounded wishlist.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "wishlistProductIds": { "type": "array", "description": "Bounded up to 50 product IDs" },
+        "accountDeletionRequested": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "wishlistProductIds", "accountDeletionRequested", "createdAt", "updatedAt"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Isolated customer PII record stored under /users/{userId}/private/profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "defaultZone": { "type": "string", "enum": ["inside_dhaka", "outside_dhaka"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "phone", "defaultZone", "createdAt", "updatedAt"]
+    },
+    "DeliveryAddress": {
+      "title": "DeliveryAddress",
+      "description": "Saved customer delivery address isolated under /users/{userId}/addresses/{addressId}.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "recipientName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "phone": { "type": "string", "minLength": 6, "maxLength": 24 },
+        "zone": { "type": "string", "enum": ["inside_dhaka", "outside_dhaka"] },
+        "district": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "area": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "streetAddress": { "type": "string", "minLength": 4, "maxLength": 300 },
+        "isDefault": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "label",
+        "recipientName",
+        "phone",
+        "zone",
+        "district",
+        "area",
+        "streetAddress",
+        "isDefault",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CartItem": {
+      "title": "CartItem",
+      "description": "Cross-device persisted cart line item under /users/{userId}/cart/{cartItemId}.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "quantity": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "productId", "quantity", "createdAt", "updatedAt"]
+    },
+    "PrescriptionReview": {
+      "title": "PrescriptionReview",
+      "description": "Restricted prescription submission record for Rx-only medicines.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "phone": { "type": "string", "minLength": 6, "maxLength": 24 },
+        "productIds": { "type": "array", "description": "Bounded up to 10 Rx product IDs" },
+        "doctorName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "clinicOrHospital": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "prescriptionDate": { "type": "string", "minLength": 4, "maxLength": 30 },
+        "storageFilePath": { "type": "string", "maxLength": 400 },
+        "notes": { "type": "string", "maxLength": 800 },
+        "status": { "type": "string", "enum": ["pending_review", "approved", "needs_info", "rejected"] },
+        "pharmacistNotes": { "type": "string", "maxLength": 800 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "customerName",
+        "phone",
+        "productIds",
+        "doctorName",
+        "clinicOrHospital",
+        "prescriptionDate",
+        "storageFilePath",
+        "notes",
+        "status",
+        "pharmacistNotes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Shared pharmacy order document synced between Customer Panel and Admin Panel.",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string", "minLength": 4, "maxLength": 50 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "customerPhone": { "type": "string", "minLength": 6, "maxLength": 24 },
+        "deliveryZone": { "type": "string", "enum": ["inside_dhaka", "outside_dhaka"] },
+        "district": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "area": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "deliveryAddress": { "type": "string", "minLength": 4, "maxLength": 350 },
+        "deliveryInstructions": { "type": "string", "maxLength": 400 },
+        "orderNotes": { "type": "string", "maxLength": 400 },
+        "itemCount": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "couponCode": { "type": "string", "maxLength": 40 },
+        "deliveryFee": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cod", "bkash", "nagad"] },
+        "paymentStatus": { "type": "string", "enum": ["unpaid", "pending_verification", "paid", "refunded"] },
+        "paymentSenderRef": { "type": "string", "maxLength": 100 },
+        "requiresPrescription": { "type": "boolean" },
+        "prescriptionId": { "type": "string", "maxLength": 128 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Pending",
+            "Awaiting Review",
+            "Confirmed",
+            "Processing",
+            "Ready for Dispatch",
+            "Shipped",
+            "Delivered",
+            "Cancelled",
+            "Refund Pending",
+            "Refunded"
+          ]
+        },
+        "courierName": { "type": "string", "maxLength": 100 },
+        "trackingReference": { "type": "string", "maxLength": 120 },
+        "cancellationRequested": { "type": "boolean" },
+        "cancellationReason": { "type": "string", "maxLength": 400 },
+        "idempotencyKey": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "orderNumber",
+        "userId",
+        "customerName",
+        "customerPhone",
+        "deliveryZone",
+        "district",
+        "area",
+        "deliveryAddress",
+        "deliveryInstructions",
+        "orderNotes",
+        "itemCount",
+        "subtotal",
+        "discountAmount",
+        "couponCode",
+        "deliveryFee",
+        "totalAmount",
+        "paymentMethod",
+        "paymentStatus",
+        "paymentSenderRef",
+        "requiresPrescription",
+        "prescriptionId",
+        "status",
+        "courierName",
+        "trackingReference",
+        "cancellationRequested",
+        "cancellationReason",
+        "idempotencyKey",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "OrderItem": {
+      "title": "OrderItem",
+      "description": "Verified order line item snapshot stored in /orders/{orderId}/items/{itemId}.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "brand": { "type": "string", "maxLength": 120 },
+        "packSize": { "type": "string", "maxLength": 80 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "requiresPrescription": { "type": "boolean" },
+        "quantity": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "lineTotal": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "orderId",
+        "userId",
+        "productId",
+        "productName",
+        "brand",
+        "packSize",
+        "imageUrl",
+        "requiresPrescription",
+        "quantity",
+        "unitPrice",
+        "lineTotal",
+        "createdAt"
+      ]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Customer or system notification record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "message": { "type": "string", "minLength": 2, "maxLength": 600 },
+        "type": { "type": "string", "enum": ["order", "prescription", "support", "system"] },
+        "relatedId": { "type": "string", "maxLength": 128 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "relatedId", "isRead", "createdAt", "updatedAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Customer support inquiry or issue report.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 24 },
+        "subject": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "category": { "type": "string", "enum": ["order", "medicine_query", "delivery", "payment", "account", "other"] },
+        "orderNumber": { "type": "string", "maxLength": 50 },
+        "message": { "type": "string", "minLength": 5, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved", "closed"] },
+        "adminReply": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "customerName",
+        "email",
+        "phone",
+        "subject",
+        "category",
+        "orderNumber",
+        "message",
+        "status",
+        "adminReply",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Administrator registry mapped by Auth UID."
+    },
+    "/siteSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSetting" },
+      "description": "Public storefront settings, hero banners, delivery rates, and policy documents."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Shared pharmacy product categories."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Shared pharmacy product catalog."
+    },
+    "/coupons/{couponCode}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Discount coupons looked up by coupon code."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublic" },
+      "description": "Non-PII customer account profile and bounded wishlist."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Isolated customer PII record (email, phone, defaultZone)."
+    },
+    "/users/{userId}/addresses/{addressId}": {
+      "schema": { "$ref": "#/entities/DeliveryAddress" },
+      "description": "Customer saved delivery addresses."
+    },
+    "/users/{userId}/cart/{cartItemId}": {
+      "schema": { "$ref": "#/entities/CartItem" },
+      "description": "Authenticated customer cross-device shopping cart items."
+    },
+    "/prescriptionReviews/{prescriptionId}": {
+      "schema": { "$ref": "#/entities/PrescriptionReview" },
+      "description": "Restricted prescription review submissions for Rx medicines."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Shared customer order headers."
+    },
+    "/orders/{orderId}/items/{itemId}": {
+      "schema": { "$ref": "#/entities/OrderItem" },
+      "description": "Order line item snapshots validated against authoritative product prices."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Customer notifications."
+    },
+    "/supportTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Customer support tickets."
+    }
+  }
+}

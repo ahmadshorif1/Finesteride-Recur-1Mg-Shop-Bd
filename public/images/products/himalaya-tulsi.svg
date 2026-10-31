@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" rx="12" fill="#F8FBF8"/>
+  <ellipse cx="205" cy="252" rx="115" ry="14" fill="#14532D" fill-opacity="0.09"/>
+  <!-- Outer Carton -->
+  <rect x="118" y="42" width="102" height="198" rx="6" fill="#FFFFFF" stroke="#DCE7DF" stroke-width="1.5"/>
+  <rect x="118" y="42" width="102" height="12" rx="4" fill="#15803D"/>
+  <text x="169" y="78" text-anchor="middle" fill="#0F766E" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="800">Himalaya</text>
+  <line x1="136" y1="84" x2="202" y2="84" stroke="#F97316" stroke-width="2"/>
+  <text x="169" y="96" text-anchor="middle" fill="#64748B" font-family="Plus Jakarta Sans, sans-serif" font-size="7.5" font-weight="600">PURE HERBS</text>
+  <text x="169" y="122" text-anchor="middle" fill="#166534" font-family="Plus Jakarta Sans, sans-serif" font-size="18" font-weight="700">Tulsi</text>
+  <text x="169" y="136" text-anchor="middle" fill="#475569" font-family="Plus Jakarta Sans, sans-serif" font-size="8.5" font-weight="500">Respiratory Wellness</text>
+  <rect x="132" y="152" width="74" height="68" rx="6" fill="#ECFDF5"/>
+  <path d="M169 162 C184 168 188 188 169 208 C150 188 154 168 169 162 Z" fill="#16A34A"/>
+  <path d="M152 182 C164 178 174 188 168 205 C152 202 146 190 152 182 Z" fill="#22C55E"/>
+
+  <!-- Supplement Bottle -->
+  <rect x="228" y="80" width="52" height="18" rx="4" fill="#E2E8F0" stroke="#CBD5E1"/>
+  <rect x="216" y="96" width="76" height="148" rx="14" fill="#FFFFFF" stroke="#D1FAE5" stroke-width="1.5"/>
+  <rect x="220" y="122" width="68" height="96" rx="4" fill="#F0FDF4"/>
+  <text x="254" y="142" text-anchor="middle" fill="#0F766E" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="800">Himalaya</text>
+  <text x="254" y="164" text-anchor="middle" fill="#15803D" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="700">Tulsi</text>
+  <text x="254" y="178" text-anchor="middle" fill="#475569" font-family="Plus Jakarta Sans, sans-serif" font-size="7.5">60 Capsules</text>
+
+  <!-- Botanical Tulsi Leaves Foreground -->
+  <path d="M92 222 C110 198 138 204 146 232 C122 242 98 238 92 222 Z" fill="#15803D"/>
+  <path d="M134 238 C142 208 168 206 178 234 C156 248 138 248 134 238 Z" fill="#22C55E"/>
+  <path d="M118 200 C134 182 156 192 154 218 C134 222 118 214 118 200 Z" fill="#16A34A"/>
+</svg>

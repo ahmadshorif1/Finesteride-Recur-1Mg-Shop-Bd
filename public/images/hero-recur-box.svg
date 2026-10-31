@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" fill="none">
+  <defs>
+    <linearGradient id="boxFront" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F2F6FA"/>
+    </linearGradient>
+    <linearGradient id="boxSide" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#DCE4EE"/>
+      <stop offset="100%" stop-color="#C8D3E1"/>
+    </linearGradient>
+    <linearGradient id="boxTop" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#EBF0F7"/>
+      <stop offset="100%" stop-color="#F9FBFD"/>
+    </linearGradient>
+    <linearGradient id="blister" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E4EAF2"/>
+      <stop offset="50%" stop-color="#CFD8E5"/>
+      <stop offset="100%" stop-color="#B8C4D6"/>
+    </linearGradient>
+    <radialGradient id="pillBlue" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#5AC8FA"/>
+      <stop offset="55%" stop-color="#0A84FF"/>
+      <stop offset="100%" stop-color="#0055B3"/>
+    </radialGradient>
+    <filter id="softShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#0F3D27" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <!-- Soft ground shadow -->
+  <ellipse cx="365" cy="378" rx="285" ry="26" fill="#0F3D27" fill-opacity="0.09"/>
+
+  <!-- 3D Pharmaceutical Carton -->
+  <g filter="url(#softShadow)">
+    <!-- Left panel -->
+    <polygon points="95,95 148,118 148,308 95,274" fill="url(#boxSide)"/>
+    <!-- Top panel -->
+    <polygon points="95,95 495,52 548,74 148,118" fill="url(#boxTop)"/>
+    <!-- Main front face -->
+    <polygon points="148,118 548,74 548,266 148,308" fill="url(#boxFront)" stroke="#D9E2EC" stroke-width="1.5"/>
+
+    <!-- Subtle molecular graphic on right of carton -->
+    <circle cx="462" cy="155" r="46" fill="#EBF4FF" fill-opacity="0.65"/>
+    <circle cx="488" cy="182" r="28" fill="#E1EFFE" fill-opacity="0.55"/>
+    <path d="M425 140 L458 156 L492 135 M458 156 L462 195" stroke="#BFD9F5" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Side panel batch metadata -->
+    <g fill="#4A5568" font-family="Plus Jakarta Sans, sans-serif" font-size="8" font-weight="600" opacity="0.75">
+      <text x="106" y="150" transform="rotate(14 106 150)">BEXIMCO</text>
+      <text x="106" y="172" transform="rotate(14 106 172)">DAR NO: 124-98</text>
+      <text x="106" y="194" transform="rotate(14 106 194)">STORE BELOW 30°C</text>
+    </g>
+
+    <!-- Front Typography (matching reference Recur 1mg box) -->
+    <g transform="matrix(0.994 -0.109 0 1 0 0)">
+      <text x="176" y="158" fill="#334155" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600">30 tablets</text>
+
+      <!-- Blue circle mark behind R -->
+      <circle cx="204" cy="197" r="24" fill="#0284C7"/>
+      <rect x="178" y="199" width="48" height="22" rx="3" fill="#0369A1"/>
+
+      <!-- Recur Brand Title -->
+      <text x="190" y="213" fill="#FFFFFF" font-family="Plus Jakarta Sans, sans-serif" font-size="29" font-weight="800">R</text>
+      <text x="213" y="213" fill="#DC2626" font-family="Plus Jakarta Sans, sans-serif" font-size="27" font-weight="700">ecur</text>
+      <text x="273" y="198" fill="#DC2626" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700">®</text>
+
+      <text x="206" y="232" fill="#334155" font-family="Plus Jakarta Sans, sans-serif" font-size="11.5" font-weight="600">Finasteride 1 mg</text>
+      <text x="176" y="251" fill="#475569" font-family="Plus Jakarta Sans, sans-serif" font-size="10.5" font-weight="500">Each film coated tablet contains: Finasteride USP 1 mg</text>
+
+      <!-- Manufacturer -->
+      <text x="176" y="294" fill="#1E293B" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700">BEXIMCO PHARMACEUTICALS LTD.</text>
+      <text x="176" y="307" fill="#64748B" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="500">TONGI, BANGLADESH</text>
+
+      <!-- Red Rx Warning Label -->
+      <rect x="434" y="264" width="92" height="28" rx="3" fill="#EF4444"/>
+      <text x="480" y="275" text-anchor="middle" fill="#FFFFFF" font-family="Plus Jakarta Sans, sans-serif" font-size="8.5" font-weight="700">Rx ONLY · CAUTION</text>
+      <rect x="435" y="279" width="90" height="12" rx="1.5" fill="#FFFFFF"/>
+      <text x="480" y="288" text-anchor="middle" fill="#B91C1C" font-family="Plus Jakarta Sans, sans-serif" font-size="7.5" font-weight="600">Dispense on Prescription</text>
+    </g>
+  </g>
+
+  <!-- Silver Blister Pack with 10 Blue Film-Coated Tablets -->
+  <g filter="url(#softShadow)">
+    <polygon points="240,322 572,272 648,328 310,384" fill="url(#blister)" stroke="#FFFFFF" stroke-width="1.5"/>
+    <polygon points="248,324 568,276 636,325 312,377" fill="none" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 3"/>
+
+    <!-- Back Row of 5 Blue Tablets -->
+    <g>
+      <ellipse cx="312" cy="323" rx="15" ry="9" fill="#0369A1"/>
+      <ellipse cx="312" cy="319" rx="15" ry="8.5" fill="url(#pillBlue)"/>
+
+      <ellipse cx="372" cy="314" rx="15" ry="9" fill="#0369A1"/>
+      <ellipse cx="372" cy="310" rx="15" ry="8.5" fill="url(#pillBlue)"/>
+
+      <ellipse cx="432" cy="305" rx="15" ry="9" fill="#0369A1"/>
+      <ellipse cx="432" cy="301" rx="15" ry="8.5" fill="url(#pillBlue)"/>
+
+      <ellipse cx="492" cy="296" rx="15" ry="9" fill="#0369A1"/>
+      <ellipse cx="492" cy="292" rx="15" ry="8.5" fill="url(#pillBlue)"/>
+
+      <ellipse cx="552" cy="287" rx="15" ry="9" fill="#0369A1"/>
+      <ellipse cx="552" cy="283" rx="15" ry="8.5" fill="url(#pillBlue)"/>
+    </g>
+
+    <!-- Front Row of 5 Blue Tablets -->
+    <g>
+      <ellipse cx="348" cy="353" rx="16" ry="9.5" fill="#0369A1"/>
+      <ellipse cx="348" cy="349" rx="16" ry="9" fill="url(#pillBlue)"/>
+
+      <ellipse cx="410" cy="343" rx="16" ry="9.5" fill="#0369A1"/>
+      <ellipse cx="410" cy="339" rx="16" ry="9" fill="url(#pillBlue)"/>
+
+      <ellipse cx="472" cy="333" rx="16" ry="9.5" fill="#0369A1"/>
+      <ellipse cx="472" cy="329" rx="16" ry="9" fill="url(#pillBlue)"/>
+
+      <ellipse cx="534" cy="323" rx="16" ry="9.5" fill="#0369A1"/>
+      <ellipse cx="534" cy="319" rx="16" ry="9" fill="url(#pillBlue)"/>
+
+      <ellipse cx="594" cy="314" rx="16" ry="9.5" fill="#0369A1"/>
+      <ellipse cx="594" cy="310" rx="16" ry="9" fill="url(#pillBlue)"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" rx="12" fill="#FAF8F5"/>
+  <ellipse cx="200" cy="254" rx="74" ry="13" fill="#451A03" fill-opacity="0.12"/>
+  <!-- Dark Cap -->
+  <rect x="158" y="44" width="84" height="26" rx="5" fill="#291509"/>
+  <rect x="166" y="70" width="68" height="10" fill="#451A03"/>
+  <!-- Amber Glass Bottle -->
+  <rect x="140" y="78" width="120" height="172" rx="20" fill="#5C240A"/>
+  <rect x="148" y="84" width="16" height="158" rx="8" fill="#7C3412" fill-opacity="0.45"/>
+  <!-- Cream Botanical Label -->
+  <rect x="145" y="108" width="110" height="118" rx="6" fill="#F5F0E6"/>
+  <rect x="145" y="108" width="110" height="8" rx="2" fill="#15803D"/>
+  <text x="200" y="131" text-anchor="middle" fill="#0F766E" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="800">Himalaya</text>
+  <text x="200" y="150" text-anchor="middle" fill="#1E293B" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="700">Ashwagandha</text>
+  <text x="200" y="163" text-anchor="middle" fill="#57534E" font-family="Plus Jakarta Sans, sans-serif" font-size="8">General Wellness · 60 Caps</text>
+  <circle cx="200" cy="193" r="21" fill="#DCFCE7" stroke="#86EFAC"/>
+  <path d="M200 177 C210 184 212 198 200 209 C188 198 190 184 200 177 Z" fill="#15803D"/>
+  <path d="M189 191 C196 189 202 195 199 206 C190 204 186 197 189 191 Z" fill="#22C55E"/>
+</svg>

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" rx="12" fill="#F8FAFC"/>
+  <ellipse cx="200" cy="254" rx="76" ry="13" fill="#0F172A" fill-opacity="0.08"/>
+  <!-- Cap -->
+  <rect x="156" y="42" width="88" height="28" rx="6" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1.5"/>
+  <line x1="166" y1="46" x2="166" y2="66" stroke="#CBD5E1"/>
+  <line x1="178" y1="46" x2="178" y2="66" stroke="#CBD5E1"/>
+  <line x1="190" y1="46" x2="190" y2="66" stroke="#CBD5E1"/>
+  <line x1="202" y1="46" x2="202" y2="66" stroke="#CBD5E1"/>
+  <line x1="214" y1="46" x2="214" y2="66" stroke="#CBD5E1"/>
+  <line x1="226" y1="46" x2="226" y2="66" stroke="#CBD5E1"/>
+  <!-- Bottle Body -->
+  <rect x="138" y="68" width="124" height="182" rx="22" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <!-- Label -->
+  <rect x="144" y="102" width="112" height="122" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <!-- Spectrum Arch -->
+  <path d="M156 146 Q200 116 244 146" stroke="#F59E0B" stroke-width="5" stroke-linecap="round"/>
+  <path d="M162 152 Q200 124 238 152" stroke="#10B981" stroke-width="4" stroke-linecap="round"/>
+  <path d="M168 157 Q200 132 232 157" stroke="#0284C7" stroke-width="4" stroke-linecap="round"/>
+  <rect x="154" y="130" width="92" height="26" rx="5" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.2"/>
+  <text x="200" y="148" text-anchor="middle" fill="#0F172A" font-family="Plus Jakarta Sans, sans-serif" font-size="16" font-weight="800">Centrum</text>
+  <text x="200" y="175" text-anchor="middle" fill="#334155" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="700">ADULTS MULTIVITAMIN</text>
+  <text x="200" y="189" text-anchor="middle" fill="#64748B" font-family="Plus Jakarta Sans, sans-serif" font-size="8">Complete From A to Zinc</text>
+  <!-- Bottom color blocks -->
+  <rect x="156" y="198" width="20" height="14" rx="3" fill="#0EA5E9"/>
+  <rect x="179" y="198" width="20" height="14" rx="3" fill="#10B981"/>
+  <rect x="202" y="198" width="20" height="14" rx="3" fill="#F59E0B"/>
+  <rect x="225" y="198" width="20" height="14" rx="3" fill="#EF4444"/>
+</svg>

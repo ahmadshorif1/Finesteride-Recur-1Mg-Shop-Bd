@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" rx="12" fill="#F6F9FC"/>
+  <ellipse cx="205" cy="242" rx="145" ry="16" fill="#0F3D27" fill-opacity="0.08"/>
+  <!-- Box -->
+  <polygon points="48,78 78,92 78,205 48,186" fill="#D5DFEC"/>
+  <polygon points="48,78 292,50 322,64 78,92" fill="#EDF2F8"/>
+  <polygon points="78,92 322,64 322,180 78,205" fill="#FFFFFF" stroke="#D8E2EE" stroke-width="1.5"/>
+  <g transform="matrix(0.994 -0.105 0 1 0 0)">
+    <text x="96" y="118" fill="#475569" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="600">30 tablets</text>
+    <circle cx="114" cy="144" r="15" fill="#0284C7"/>
+    <text x="105" y="153" fill="#FFFFFF" font-family="Plus Jakarta Sans, sans-serif" font-size="18" font-weight="800">R</text>
+    <text x="122" y="153" fill="#DC2626" font-family="Plus Jakarta Sans, sans-serif" font-size="18" font-weight="700">ecur®</text>
+    <text x="105" y="168" fill="#334155" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="600">Finasteride 1 mg</text>
+    <text x="96" y="198" fill="#1E293B" font-family="Plus Jakarta Sans, sans-serif" font-size="8.5" font-weight="700">BEXIMCO PHARMACEUTICALS LTD.</text>
+    <rect x="255" y="176" width="52" height="16" rx="2" fill="#EF4444"/>
+    <text x="281" y="187" text-anchor="middle" fill="#FFFFFF" font-family="Plus Jakarta Sans, sans-serif" font-size="7.5" font-weight="700">Rx ONLY</text>
+  </g>
+  <!-- Blister -->
+  <polygon points="122,216 332,184 374,218 162,252" fill="#D6E0EC" stroke="#FFFFFF" stroke-width="1.2"/>
+  <ellipse cx="172" cy="216" rx="10" ry="6" fill="#0EA5E9"/>
+  <ellipse cx="212" cy="210" rx="10" ry="6" fill="#0EA5E9"/>
+  <ellipse cx="252" cy="204" rx="10" ry="6" fill="#0EA5E9"/>
+  <ellipse cx="292" cy="198" rx="10" ry="6" fill="#0EA5E9"/>
+  <ellipse cx="330" cy="192" rx="10" ry="6" fill="#0EA5E9"/>
+  <ellipse cx="192" cy="233" rx="10.5" ry="6.2" fill="#0284C7"/>
+  <ellipse cx="232" cy="227" rx="10.5" ry="6.2" fill="#0284C7"/>
+  <ellipse cx="272" cy="221" rx="10.5" ry="6.2" fill="#0284C7"/>
+  <ellipse cx="312" cy="215" rx="10.5" ry="6.2" fill="#0284C7"/>
+  <ellipse cx="350" cy="209" rx="10.5" ry="6.2" fill="#0284C7"/>
+</svg>

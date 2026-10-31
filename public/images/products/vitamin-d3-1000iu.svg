@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" rx="12" fill="#F7FAF8"/>
+  <ellipse cx="200" cy="254" rx="72" ry="13" fill="#14532D" fill-opacity="0.11"/>
+  <!-- Green Flip Cap -->
+  <rect x="158" y="42" width="84" height="26" rx="6" fill="#166534"/>
+  <rect x="166" y="68" width="68" height="10" fill="#14532D"/>
+  <!-- Deep Green Bottle -->
+  <rect x="142" y="76" width="116" height="174" rx="20" fill="#14532D"/>
+  <rect x="150" y="84" width="14" height="156" rx="7" fill="#22C55E" fill-opacity="0.22"/>
+  <!-- Label -->
+  <rect x="146" y="106" width="108" height="122" rx="6" fill="#FFFFFF"/>
+  <rect x="146" y="106" width="108" height="22" rx="4" fill="#FACC15"/>
+  <text x="200" y="121" text-anchor="middle" fill="#14532D" font-family="Plus Jakarta Sans, sans-serif" font-size="9.5" font-weight="800">NATURE'S BOUNTY</text>
+  <text x="200" y="148" text-anchor="middle" fill="#166534" font-family="Plus Jakarta Sans, sans-serif" font-size="16" font-weight="800">Vitamin</text>
+  <text x="200" y="169" text-anchor="middle" fill="#166534" font-family="Plus Jakarta Sans, sans-serif" font-size="19" font-weight="800">D3</text>
+  <text x="200" y="185" text-anchor="middle" fill="#334155" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="700">1000 IU (25 mcg)</text>
+  <rect x="158" y="195" width="84" height="18" rx="4" fill="#FEF08A"/>
+  <text x="200" y="207" text-anchor="middle" fill="#854D0E" font-family="Plus Jakarta Sans, sans-serif" font-size="8" font-weight="700">Bone &amp; Immune Health</text>
+  <text x="200" y="223" text-anchor="middle" fill="#64748B" font-family="Plus Jakarta Sans, sans-serif" font-size="7.5">100 Rapid Release Softgels</text>
+</svg>

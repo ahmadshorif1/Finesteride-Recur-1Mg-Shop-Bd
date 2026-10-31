@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isActiveAccount() {
+      return isSignedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function isAdmin() {
+      return isActiveAccount() && (
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email_verified == true && request.auth.token.email == 'ahmadshorif00001@gmail.com')
+      );
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Public pharmacy product & banner imagery uploaded by Admin Panel
+    match /public/{category}/{fileName} {
+      allow read: if fileName.size() <= 160;
+      allow write: if isAdmin() &&
+        request.resource != null &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    // Strictly private customer prescription files (Owner + Pharmacist/Admin ONLY)
+    match /prescriptions/{userId}/{fileName} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isActiveAccount() &&
+        request.auth.uid == userId &&
+        fileName.size() <= 160 &&
+        fileName.matches('^[a-zA-Z0-9_\\-\\.]+$') &&
+        request.resource != null &&
+        request.resource.size < 8 * 1024 * 1024 &&
+        (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+      allow update, delete: if isAdmin();
+    }
+  }
+}
